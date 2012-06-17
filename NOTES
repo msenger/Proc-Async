@@ -29,9 +29,29 @@ KILL - kill the external program; wait until it is killed
 CLEAN - remove files from the job
   Input: - (mandatory) job ID (as returned from the START request)
 
-Role of the warpper (monitor) parent:
+Role of the wrapper (monitor) parent:
 -------------------------------------
 
-* updates the progress report
-???
+* fork the real extrenal process
+* updates its status in the configuration file
 
+Configuration file:
+-------------------
+
+* created on-the-fly within a directory based on the unique JOB id:
+
+  /blah/blah/<JOB-ID> ... directory (it also becomes a working directory of the external process)
+     stdout.file  ... where the external process writes its STDOUT
+     stderr.file  ... where the external process writes its STDERR
+     pid.file     ... where the wrapper stores the PID of the external process
+     status.cfg   ... the configuration file
+
+* status.cfg:
+
+  [job]
+  id = ... (the same as this directory basename)
+  args = ... comma-separated arguments to start the external process
+  status = ...current job status
+  time = ...starting time of the external process (display format, with time-zone, etc.)
+  started = ...starting time of the external process (number)
+  ended = ...ending time of the external process (number)
