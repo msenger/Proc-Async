@@ -51,6 +51,7 @@ Configuration file:
   [job]
   id = ... (the same as this directory basename)
   args = ... comma-separated arguments to start the external process
+  options = ...
   status = ...current job status
   time = ...starting time of the external process (display format, with time-zone, etc.)
   started = ...starting time of the external process (number)
