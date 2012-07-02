@@ -16,10 +16,20 @@ use Config::Simple;
 
 # VERSION
 
-use constant STDOUT_FILE => 'stdout';
-use constant STDERR_FILE => 'stderr';
-use constant PID_FILE    => 'pid';
-use constant CONFIG_FILE => 'status.cfg';
+use constant STDOUT_FILE => 'proc_async_stdout';
+use constant STDERR_FILE => 'proc_async_stderr';
+use constant PID_FILE    => 'proc_async_pid';
+use constant CONFIG_FILE => 'proc_async_status.cfg';
+
+use constant {
+    STATUS_UNKNOWN     => 'unknown',
+    STATUS_CREATED     => 'created',
+    STATUS_RUNNING     => 'running',
+    STATUS_COMPLETED   => 'completed',
+    STATUS_TERM_BY_REQ => 'terminated by request',
+    STATUS_TERM_BY_ERR => 'terminated by error',
+    STATUS_REMOVED     => 'removed',
+};
 
 #-----------------------------------------------------------------
 # Start an external program and return its ID.
@@ -33,37 +43,23 @@ use constant CONFIG_FILE => 'status.cfg';
 #               DIR => where to create JOB directories
 #               NOSTART => 1 no external process will be started
 #-----------------------------------------------------------------
-sub start {  # TBD: $args should be also an array, not onlu an arrayref
+sub start {
     my $class = shift;
     croak ("START: Undefined external process.")
 	unless @_ > 0;
-    my @args;
-    my $options;
-    if (ref $_[0] and ref $_[0] eq 'ARRAY') {
-	# arguments for external process are given as an arrayref...
-	@args = @{ shift() };
-	$options = (ref $_[0] and ref $_[0] eq 'HASH') ? shift @_ : {};
-    } else {
-	# arguments for external process are given as an array...
-	$options = (ref $_[-1] and ref $_[-1] eq 'HASH') ? pop @_ : {};
-	@args = @_;
-    }
+    my ($args, $options) = _process_start_args (@_);
 
+    # create a job ID and a job directory
     my $id = _generate_job_id();
     my $dir = _id2dir ($id);
-
-    # for testing
-    if (exists $options->{NOSTART} and $options->{NOSTART} eq 1) {
-	print "ARGS: " . join ("|", @args) . "\n";
-    }
 
     # create configuration file
     my $cfgfile = File::Spec->catfile ($dir, CONFIG_FILE);
     my $cfg = Config::Simple->new (syntax => 'ini');
 
     $cfg->param ("job.id", $id);
-    for (my $i = 0; $i < @args; $i++) {
-	$cfg->param ("job.args$i", $args[$i]);
+    for (my $i = 0; $i < @$args; $i++) {
+	$cfg->param ("job.args$i", $args->[$i]);
     }
 
     # [job]
@@ -84,8 +80,79 @@ sub start {  # TBD: $args should be also an array, not onlu an arrayref
     return $id;
 }
 
-sub _cfg_scalar_escape {
+#-----------------------------------------------------------------
+# Remove files belonging to the given job, including its directory.
+# -----------------------------------------------------------------
+sub clean {
+    my ($class, $jobid) = @_;
+    croak ("CLEAN: Undefined Job ID.")
+	unless $jobid;
+    my $dir = _id2dir ($jobid);
+    unlink (STDOUT_FILE, STDERR_FILE, PID_FILE, CONFIG_FILE);
+    rmdir $dir
+	or croak "Cannot rmdir '$dir': $!";
+}
+
+#-----------------------------------------------------------------
+# Extract arguments for the start() method and return:
+#  ( [args], {options} )
+# -----------------------------------------------------------------
+sub _process_start_args {
+    my @args;
+    my $options;
+    if (ref $_[0] and ref $_[0] eq 'ARRAY') {
+	# arguments for external process are given as an arrayref...
+	@args = @{ shift() };
+	$options = (ref $_[0] and ref $_[0] eq 'HASH') ? shift @_ : {};
+    } else {
+	# arguments for external process are given as an array...
+	$options = (ref $_[-1] and ref $_[-1] eq 'HASH') ? pop @_ : {};
+	@args = @_;
+    }
+    return (\@args, $options);
+}
+
+#-----------------------------------------------------------------
+# Create and fill the configuration file. Return the filename.
+#-----------------------------------------------------------------
+sub _start_config {
+    my ($jobid, $dir, $args, $options) = @_;
+
+    # create configuration file
+    my $cfgfile = File::Spec->catfile ($dir, CONFIG_FILE);
+    my $cfg = Config::Simple->new (syntax => 'ini');
+
+    # ...and fill it
+    $cfg->param ("job.id", $jobid);
+    for (my $i = 0; $i < @$args; $i++) {
+	$cfg->param ("job.args$i", _cfg_escape ($args->[$i]));
+    }
+    foreach my $key (sort keys %$options) {
+	$cfg->param ("options.$key", _cfg_escape ($options->{$key}));
+    }
+    $cfg->param ("job.status", STATUS_CREATED);
+
+    # [job]
+    # id = ... (the same as this directory basename)
+    # args = ... comma-separated arguments to start the external process
+    # options = ...
+    # status = ...current job status
+    # time = ...starting time of the external process (display format, with time-zone, etc.)
+    # started = ...starting time of the external process (number)
+    # ended = ...ending time of the external process (number)
+
+    $cfg->write ($cfgfile);
+    return $cfgfile;
+}
+
+#-----------------------------------------------------------------
+# Return the given value unchanged if it does not contain any
+# comma. Otherwise, escape all double-quotes and return double-quoted
+# $value.
+# -----------------------------------------------------------------
+sub _cfg_escape {
     my $value = shift;
+    return $value unless $value =~ m{\,};
     $value =~ s{"}{\\"}g;
     return "\"$value\"";
 }

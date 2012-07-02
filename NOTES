@@ -32,7 +32,7 @@ CLEAN - remove files from the job
 Role of the wrapper (monitor) parent:
 -------------------------------------
 
-* fork the real extrenal process
+* fork the real external process
 * updates its status in the configuration file
 
 Configuration file:
