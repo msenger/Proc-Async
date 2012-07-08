@@ -12,7 +12,7 @@ use strict;
 package Proc::Async;
 
 use Carp;
-use Config::Simple;
+use Proc::Async::Config;
 
 # VERSION
 
@@ -50,34 +50,27 @@ sub start {
     my ($args, $options) = _process_start_args (@_);
 
     # create a job ID and a job directory
-    my $id = _generate_job_id();
-    my $dir = _id2dir ($id);
+    my $jobid = _generate_job_id();
+    my $dir = _id2dir ($jobid);
 
     # create configuration file
-    my $cfgfile = File::Spec->catfile ($dir, CONFIG_FILE);
-    my $cfg = Config::Simple->new (syntax => 'ini');
+    my $cfgfile = _start_config ($jobid, $args, $options);
 
-    $cfg->param ("job.id", $id);
-    for (my $i = 0; $i < @$args; $i++) {
-	$cfg->param ("job.args$i", $args->[$i]);
-    }
-
-    # [job]
-    # id = ... (the same as this directory basename)
-    # args = ... comma-separated arguments to start the external process
-    # options = ...
-    # status = ...current job status
-    # time = ...starting time of the external process (display format, with time-zone, etc.)
-    # started = ...starting time of the external process (number)
-    # ended = ...ending time of the external process (number)
-
-    $cfg->write ($cfgfile);
+    # print "READ: " . $cfg->param ("job.id") . "\n";
 
     print `cat $cfgfile`;
-    # print "READ: " . $cfg->param ("job.id") . "\n";
-    # print "READ: " . join ("|", $cfg->param ("job.args")) . "\n";
+    return $jobid;
+}
 
-    return $id;
+# -----------------------------------------------------------------
+# Return status of the given job (given by $jobid).
+# -----------------------------------------------------------------
+sub status {
+    my ($class, $jobid) = @_;
+    _check_jobid ($jobid);   # may croak
+    my $dir = _id2dir ($jobid);
+    my ($cfg, $cfgfile) = $class->get_configuration ($dir);
+
 }
 
 #-----------------------------------------------------------------
@@ -85,12 +78,20 @@ sub start {
 # -----------------------------------------------------------------
 sub clean {
     my ($class, $jobid) = @_;
-    croak ("CLEAN: Undefined Job ID.")
-	unless $jobid;
+    _check_jobid ($jobid);   # may croak
     my $dir = _id2dir ($jobid);
     unlink (STDOUT_FILE, STDERR_FILE, PID_FILE, CONFIG_FILE);
     rmdir $dir
 	or croak "Cannot rmdir '$dir': $!";
+}
+
+#-----------------------------------------------------------------
+# Check existence of the given $jobid; croak if it does not exist.
+# -----------------------------------------------------------------
+sub _check_jobid {
+    my $jobid = shift;
+    croak ("Undefined Job ID ($jobid).\n")
+	unless $jobid;
 }
 
 #-----------------------------------------------------------------
@@ -113,35 +114,37 @@ sub _process_start_args {
 }
 
 #-----------------------------------------------------------------
+# Create a configuration instance and load it from the configuration
+# file (if exists) for the given job. Return ($cfg, $cfgfile).
+# -----------------------------------------------------------------
+sub get_configuration {
+    my ($class, $jobid) = @_;
+    my $dir = _id2dir ($jobid);
+    my $cfgfile = File::Spec->catfile ($dir, CONFIG_FILE);
+    my $cfg = Proc::Async::Config->new ($cfgfile);
+    return ($cfg, $cfgfile);
+}
+
+#-----------------------------------------------------------------
 # Create and fill the configuration file. Return the filename.
 #-----------------------------------------------------------------
 sub _start_config {
-    my ($jobid, $dir, $args, $options) = @_;
+    my ($jobid, $args, $options) = @_;
 
     # create configuration file
-    my $cfgfile = File::Spec->catfile ($dir, CONFIG_FILE);
-    my $cfg = Config::Simple->new (syntax => 'ini');
+    my ($cfg, $cfgfile) = Proc::Async->get_configuration ($jobid);
 
     # ...and fill it
     $cfg->param ("job.id", $jobid);
-    for (my $i = 0; $i < @$args; $i++) {
-	$cfg->param ("job.args$i", _cfg_escape ($args->[$i]));
+    foreach my $arg (@$args) {
+	$cfg->param ("job.arg", $arg);
     }
     foreach my $key (sort keys %$options) {
-	$cfg->param ("options.$key", _cfg_escape ($options->{$key}));
+	$cfg->param ("option.$key", $options->{$key});
     }
     $cfg->param ("job.status", STATUS_CREATED);
 
-    # [job]
-    # id = ... (the same as this directory basename)
-    # args = ... comma-separated arguments to start the external process
-    # options = ...
-    # status = ...current job status
-    # time = ...starting time of the external process (display format, with time-zone, etc.)
-    # started = ...starting time of the external process (number)
-    # ended = ...ending time of the external process (number)
-
-    $cfg->write ($cfgfile);
+    $cfg->save();
     return $cfgfile;
 }
 
@@ -155,12 +158,6 @@ sub _cfg_escape {
     return $value unless $value =~ m{\,};
     $value =~ s{"}{\\"}g;
     return "\"$value\"";
-}
-
-sub status {
-    my ($class, $id) = @_;
-    my $dir = _id2dir ($id);
-
 }
 
 # create and return a uniq ID
