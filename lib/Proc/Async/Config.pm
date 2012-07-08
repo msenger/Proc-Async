@@ -39,10 +39,11 @@ sub new {
     foreach my $key (keys %args) {
         $self->{$key} = $args {$key};
     }
-    $self->{data} = {};  # storage for the configuration properties
+
+    $self->clean();  # empty storage for the configuration properties
 
     # load the configuration (if exists)
-    $self->load ($self->{cfgfile})
+    $self->load()
 	if -e $self->{cfgfile};
 
     # done
@@ -50,17 +51,54 @@ sub new {
 }
 
 #-----------------------------------------------------------------
-#
-#-----------------------------------------------------------------
+# Remove all properties from all so far loaded configuration files (it
+# does it in memory, the files remain untouched).
+# -----------------------------------------------------------------
+sub clean {
+    my $self = shift;
+    $self->{data} = {};
+}
+
+#--------------------------------------------------------------------
+# Add properties from the given configuration files (or from the file
+# given in the constructor).
+# -----------------------------------------------------------------
 sub load {
     my ($self, $cfgfile) = @_;
+    $cfgfile = $self->{cfgfile} unless $cfgfile;
+    open (my $cfg, '<', $cfgfile)
+	or croak ("Cannot open configuration file '$cfgfile': $!\n");
+    my $count = 0;
+    while (my $line = <$cfg>) {
+	$count++;
+
+	# skipping comments and empty lines:
+	$line =~ /^(\n|\#)/  and next;
+	$line =~ /\S/        or  next;    
+	chomp $line;
+	$line =~ s/^\s+//g;
+	$line =~ s/\s+$//g;
+
+	# parsing key/value pairs
+	my ($key, $value) = split (m{\s*=\s*}, $line, 2);
+	if (not defined $key or $key eq '') {
+	    # unusable key
+	    carp "Missing key in the configuration file '$cfgfile' in line $count: '$line'. Ignored.\n";
+	    next;
+	}
+	if (not defined $value or $value eq '') {
+	    $value = 1;   # an existing property must be an important property
+	}
+	$self->param ($key, $value);
+    }
+    close $cfg;
 }
 
 #-----------------------------------------------------------------
 # Return the value of the given configuration property, or undef if
 # the property does not exist. Depending on the context, it returns
 # the value as a scalar (and if there are more values for the given
-# property then it returns the first one only), or as an array.
+# property then it returns the first value only), or an array.
 #
 # Set the given property first if there is a second argument with the
 # property value.

@@ -1,14 +1,13 @@
 #!perl -T
 
-use Test::More qw(no_plan);
-#use Test::More tests => 7;
+#use Test::More qw(no_plan);
+use Test::More tests => 16;
 
 # -----------------------------------------------------------------
 # Tests start here...
 # -----------------------------------------------------------------
 ok(1);
 use Proc::Async::Config;
-#use File::Temp qw/ tempfile /;
 use File::Temp;
 
 diag( "Configuration" );
@@ -51,8 +50,15 @@ is_deeply (\@hobbies,
 	   ['geocaching', 'gadgets'],
 	   "Get multivalue property as array failed");
 
-# save
-$cfg->save ("a.cfg");
+# save and read it again
+$cfg->save();
+$cfg = Proc::Async::Config->new ($cfgfile);
+is ($cfg->param ('name'), 'tulak', "Re-read property failed");
+is ($cfg->param ('hobby'), 'geocaching', "Re-read multivalue property as scalar failed");
+@hobbies = $cfg->param ('hobby');
+is_deeply (\@hobbies,
+	   ['geocaching', 'gadgets'],
+	   "Re-Read multivalue property as array failed");
 
 __END__
 
