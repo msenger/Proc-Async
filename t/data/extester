@@ -12,22 +12,22 @@
 use warnings;
 use strict;
 
-# VERSION
+our $VERSION;
 
 # -----------------------------------------------------------------
 # Command-line arguments and script usage
 # -----------------------------------------------------------------
-my ($opt_h, $opt_help, $opt_m, $opt_v);
 my ($opt_stdout, $opt_stderr, $opt_exit, $opt_signal, $opt_sleep, $opt_progress);
 BEGIN {
     use Getopt::Long;
-    use Pod::Usage;
+
+    $VERSION = '1.0.0';
 
     Getopt::Long::Configure ('no_ignore_case');
-    GetOptions ( h            => \$opt_h,
-                 help         => \$opt_help,
-                 man          => \$opt_m,
-                 version      => \$opt_v,
+    GetOptions ( 'h|help'     => sub { exec ('perldoc', $0);
+				       die "Sorry, 'perldoc' not found\n"; },
+                 'v|version'  => sub { print "$VERSION\n";
+				       exit (0); },
 
                  #
                  'stdout=s'   => \$opt_stdout,
@@ -37,21 +37,9 @@ BEGIN {
                  'sleep=i'    => \$opt_sleep,
                  'progress=i' => \$opt_progress,
 
-        ) or pod2usage (2);
-    pod2usage (-verbose => 0, -exitval => 0) if $opt_h;
-    pod2usage (-verbose => 1, -exitval => 0) if $opt_help;
-    pod2usage (-verbose => 2, -exitval => 0) if $opt_m;
-
+        ) or exit 1;
 }  # end of BEGIN
 
-# -------------------- Show version and exit ----------------------
-if ($opt_v) {
-    ## no critic
-    no strict;    # because the $VERSION will be added only when
-    no warnings;  # the distribution is fully built up
-    print "$VERSION\n";
-    exit(0);
-}
 # -----------------------------------------------------------------
 
 $| = 1;  # flushing STDOUT
@@ -75,13 +63,23 @@ if (defined $opt_sleep) {
 print STDOUT "$opt_stdout\n" if defined $opt_stdout;
 print STDERR "$opt_stderr\n" if defined $opt_stderr;
 
-if (defined $opt_sleep) {
+if ($opt_progress) {
+    my $slept = $opt_sleep;
+    while ($slept > 0) {
+	sleep ($opt_progress);
+	progress_report();
+	$slept -= $opt_progress;
+    }
+} elsif (defined $opt_sleep) {
     sleep ($opt_sleep);    
 }
 
 kill ($opt_signal => $$) if $opt_signal;
 exit (defined $opt_exit ? $opt_exit : 0);
 
+sub progress_report {
+    print STDERR "Progress reported at ", scalar localtime, "\n";
+}
 __END__
 
 =head1 SYNOPSIS
@@ -98,6 +96,24 @@ __END__
 
 =head1 DESCRIPTION
 
+A simple script that does nothing except that:
+
+=over
+
+=item * it may print a given text to its standard output
+
+=item * it may print a given text to its standard error
+
+=item * it may exit with a given exit code
+
+=item * it may send to itself a given signal (which may cause exiting)
+
+=item * it may sleep for a given time period before exiting (or signaling)
+
+=item * it may print a short progress report on its standard error every
+given interval
+
+=back
 
 =head1 OPTIONS
 
