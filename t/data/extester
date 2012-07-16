@@ -1,0 +1,126 @@
+#!/usr/bin/env perl
+#
+#   Usage: ./extester --help
+#
+#   Martin Senger <martin.senger@gmail.com>
+#   July 2012
+#
+# ABSTRACT: mock external program
+# PODNAME:  extester
+# -----------------------------------------------------------------
+
+use warnings;
+use strict;
+
+# VERSION
+
+# -----------------------------------------------------------------
+# Command-line arguments and script usage
+# -----------------------------------------------------------------
+my ($opt_h, $opt_help, $opt_m, $opt_v);
+my ($opt_stdout, $opt_stderr, $opt_exit, $opt_signal, $opt_sleep, $opt_progress);
+BEGIN {
+    use Getopt::Long;
+    use Pod::Usage;
+
+    Getopt::Long::Configure ('no_ignore_case');
+    GetOptions ( h            => \$opt_h,
+                 help         => \$opt_help,
+                 man          => \$opt_m,
+                 version      => \$opt_v,
+
+                 #
+                 'stdout=s'   => \$opt_stdout,
+                 'stderr=s'   => \$opt_stderr,
+                 'exit=i'     => \$opt_exit,
+                 'signal=i'   => \$opt_signal,
+                 'sleep=i'    => \$opt_sleep,
+                 'progress=i' => \$opt_progress,
+
+        ) or pod2usage (2);
+    pod2usage (-verbose => 0, -exitval => 0) if $opt_h;
+    pod2usage (-verbose => 1, -exitval => 0) if $opt_help;
+    pod2usage (-verbose => 2, -exitval => 0) if $opt_m;
+
+}  # end of BEGIN
+
+# -------------------- Show version and exit ----------------------
+if ($opt_v) {
+    ## no critic
+    no strict;    # because the $VERSION will be added only when
+    no warnings;  # the distribution is fully built up
+    print "$VERSION\n";
+    exit(0);
+}
+# -----------------------------------------------------------------
+
+$| = 1;  # flushing STDOUT
+
+# check arguments
+if (defined $opt_sleep) {
+    $opt_sleep = - $opt_sleep if $opt_sleep < 0;   # only non-negative sleep
+    if (defined $opt_progress) {
+	$opt_progress = - $opt_progress if $opt_progress < 0;   # only non-negative progress
+	if ($opt_progress > $opt_sleep) {
+	    warn "EXTESTER: -progress $opt_progress > -sleep $opt_sleep. -progress ignored.\n";
+	    undef $opt_progress;
+	}
+    }
+} elsif (defined $opt_progress) {
+    warn "EXTESTER: -progress valid only with -sleep. -progress ignored.\n";
+    undef $opt_progress;
+}
+
+# the main
+print STDOUT "$opt_stdout\n" if defined $opt_stdout;
+print STDERR "$opt_stderr\n" if defined $opt_stderr;
+
+if (defined $opt_sleep) {
+    sleep ($opt_sleep);    
+}
+
+kill ($opt_signal => $$) if $opt_signal;
+exit (defined $opt_exit ? $opt_exit : 0);
+
+__END__
+
+=head1 SYNOPSIS
+
+   extester [-stdout <text>]  [-stderr <text>]        \
+            [-exit <integer>] [-signal <integer>]     \
+            [-sleep <seconds> [-progress <seconds>] ]
+
+   extester -h
+   extester -help
+   extester -man
+   extester -version
+
+
+=head1 DESCRIPTION
+
+
+=head1 OPTIONS
+
+=head2 General options
+
+=over
+
+=item B<-h>
+
+Print a brief usage message and exits.
+
+=item B<-help>
+
+Print a brief usage message with options and exits.
+
+=item B<-man>
+
+Print a full usage message and exits.
+
+=item B<-version>
+
+Print the version and exits.
+
+=back
+
+=cut

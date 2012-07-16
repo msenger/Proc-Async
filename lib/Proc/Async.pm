@@ -70,7 +70,8 @@ sub status {
     _check_jobid ($jobid);   # may croak
     my $dir = _id2dir ($jobid);
     my ($cfg, $cfgfile) = $class->get_configuration ($dir);
-
+    my $status = $cfg->param ('job.status');
+    return ($status ? $status : STATUS_UNKNOWN);
 }
 
 #-----------------------------------------------------------------

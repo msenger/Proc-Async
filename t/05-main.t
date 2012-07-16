@@ -1,15 +1,33 @@
 #!perl -T
 
-#use Test::More qw(no_plan);
-use Test::More tests => 7;
+use Test::More qw(no_plan);
+#use Test::More tests => 7;
+
+#-----------------------------------------------------------------
+# Return a fully qualified name of the given file in the test
+# directory "t/data" - if such file really exists. With no arguments,
+# it returns the path of the test directory itself.
+# -----------------------------------------------------------------
+use FindBin qw( $Bin );
+use File::Spec;
+sub test_file {
+    my $file = File::Spec->catfile ('t', 'data', @_);
+    return $file if -e $file;
+    $file = File::Spec->catfile ($Bin, 'data', @_);
+    return $file if -e $file;
+    return File::Spec->catfile (@_);
+}
 
 # -----------------------------------------------------------------
 # Tests start here...
 # -----------------------------------------------------------------
 ok(1);
 use Proc::Async;
-diag( "My configuration" );
+diag( "Main functions" );
 
+#my $sleeper = test_file ('bad.xml');
+
+__END__
 # start and fill a configuration
 my $args = [ qw(echo yes no) ];
 my $options = { OH => 'yes', BETTER => 'no' };
