@@ -49,7 +49,7 @@ Configuration file:
 * proc_async_status.cfg:
 
   job.id = ... (the same as this directory basename)
-  job.arg = ... comma-separated arguments to start the external process
+  job.arg = ... arguments to start the external process; can be repeated
   job.status = ...current job status
   job.time = ...starting time of the external process (display format, with time-zone, etc.)
   job.started = ...starting time of the external process (number)

@@ -30,7 +30,7 @@ sub new {
     my $self = bless {}, ref ($class) || $class;
 
     # a config file name is mandatory
-    croak ("Missing config file name in the Config constructor.\n")
+    croak ("Missing config file name in the Proc::Async::Config constructor.\n")
 	unless @args > 0;
     $self->{cfgfile} = shift @args;
 
@@ -124,7 +124,7 @@ sub param {
 
 #-----------------------------------------------------------------
 # Create a configuration file (overwrite if exists). The name is
-# either given or the one given in the constructor.
+# either given here or the one given in the constructor.
 # -----------------------------------------------------------------
 sub save {
     my ($self, $cfgfile) = @_;

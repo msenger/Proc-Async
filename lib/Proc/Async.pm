@@ -57,8 +57,10 @@ sub start {
     my $cfgfile = _start_config ($jobid, $args, $options);
 
     # print "READ: " . $cfg->param ("job.id") . "\n";
+    # print `cat $cfgfile`;
 
-    print `cat $cfgfile`;
+    # ...
+
     return $jobid;
 }
 
@@ -71,7 +73,8 @@ sub status {
     my $dir = _id2dir ($jobid);
     my ($cfg, $cfgfile) = $class->get_configuration ($dir);
     my $status = $cfg->param ('job.status');
-    return ($status ? $status : STATUS_UNKNOWN);
+    # return ($status ? $status : STATUS_UNKNOWN);
+    return ($status or STATUS_UNKNOWN);
 }
 
 #-----------------------------------------------------------------
@@ -87,7 +90,7 @@ sub clean {
 }
 
 #-----------------------------------------------------------------
-# Check existence of the given $jobid; croak if it does not exist.
+# Check the presence of a $jobid; croak if it is missing.
 # -----------------------------------------------------------------
 sub _check_jobid {
     my $jobid = shift;
@@ -168,8 +171,8 @@ sub _generate_job_id {
     return $dir;
 }
 
-# return a name of a directory asociated with the given job ID
-# in this implementation of _generate_job_id, it does nothing)
+# return a name of a directory asociated with the given job ID;
+# in this implementation, it returns the same value as the job ID
 sub _id2dir {
     return shift;
 }
