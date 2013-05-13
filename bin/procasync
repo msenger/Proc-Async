@@ -1,0 +1,107 @@
+#!/usr/bin/env perl
+#
+#   Usage: ./procasync --help
+#
+# ABSTRACT: command-line tool for executing and monitoring external processes
+# PODNAME: procasync
+#------------------------------------------
+
+use strict;
+use warnings;
+
+# VERSION
+
+use lib 'lib';  # TBD
+use Proc::Async;
+
+#------------------------------------------
+# Command-line arguments and script usage
+#------------------------------------------
+my @cfg_args;
+my ($opt_h, $opt_help, $opt_m, $opt_v, $opt_q);
+my (@opt_start, $opt_opts, $opt_jobid, $opt_status, $opt_clean, $opt_kill);
+
+BEGIN {
+
+    use Getopt::Long;
+    use Pod::Usage;
+
+    Getopt::Long::Configure ('no_ignore_case');
+    GetOptions ( h                  => \$opt_h,
+                 help               => \$opt_help,
+                 man                => \$opt_m,
+                 version            => \$opt_v,
+                 quiet              => \$opt_q,
+
+                 'start=s'          => \@opt_start,
+                 'options=s%{1,50}' => \$opt_opts,
+                 'id|jobid=s'       => \$opt_jobid,
+                 status             => \$opt_status,
+                 clean              => \$opt_clean,
+                 kill               => \$opt_kill,
+
+        ) or pod2usage (2);
+    pod2usage (-verbose => 0, -exitval => 0) if $opt_h;
+    pod2usage (-verbose => 1, -exitval => 0) if $opt_help;
+    pod2usage (-verbose => 2, -exitval => 0) if $opt_m;
+
+    # Examples for '-start':
+    #   -start 'extester -stdout yes or no'
+    #    ... will become (by splitting on whitespaces): ('extester', 'stdout', 'yes', 'or', 'no')
+    #   -start extester -start stdout -start 'yes or no'
+    #    ... will become: ('extester', 'stdout', 'yes or no')
+    @opt_start = split (m{\s+}, $opt_start[0])
+	if @opt_start == 1;
+
+    # Examples for '-options':
+    #   -options name1=value1 name2=value2
+    $opt_opts = {} unless $opt_opts;
+
+    sub qmsg { print STDERR shift() unless $opt_q; }
+
+}  # end of BEGIN
+
+# -------------------- Show version and exit ----------------------
+if ($opt_v) {
+    ## no critic
+    no strict;    # because the $VERSION will be added only when
+    no warnings;  # the distribution is fully built up
+    print "$VERSION\n";
+    exit(0);
+}
+
+# -------------------- Check arguments ---------------------------
+if ( ($opt_status or $opt_clean or $opt_kill) and not $opt_jobid ) {
+    die "Missing parameter '-jobid <value>'.\n";
+}
+
+# ------------------------ Main actions --------------------------
+
+# --- start an external process
+if (@opt_start) {
+    my $jobid = Proc::Async->start ( \@opt_start, $opt_opts );
+    qmsg ("ID of the started job " . join (" ", map {"'$_'"} @opt_start) . ":\n");
+    print STDOUT "$jobid\n";
+}
+
+if ($opt_status) {
+    my $status = Proc::Async->status ( $opt_jobid, $opt_opts );
+    qmsg ("Status of $opt_jobid: ");
+    print STDOUT "$status\n";
+}
+
+__END__
+
+    actions:
+    -start <args>
+    -status [-details?]
+    -clean
+    -kill
+    -...
+
+    args used for 'start':
+    -start <exproc> ...  (agruments for exproc...)
+    -option <name>=<value> ... (may be repeated)
+
+    args for other actions:
+    -jobid <jobid>

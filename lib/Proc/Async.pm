@@ -13,7 +13,10 @@ package Proc::Async;
 
 use Carp;
 use File::Temp qw/ tempdir /;
+use File::Spec;
 use Proc::Async::Config;
+use Proc::Daemon;
+use Config;
 
 # VERSION
 
@@ -32,6 +35,12 @@ use constant {
     STATUS_REMOVED     => 'removed',
 };
 
+my $KNOWN_OPTIONS = {
+    DIR     => 1,
+    # NOSTART => 1,
+    TIMEOUT => 1,
+};
+
 #-----------------------------------------------------------------
 # Start an external program and return its ID.
 #    starts ($args, [$options])
@@ -43,38 +52,115 @@ use constant {
 #  $options ... a hashref with additional options:
 #               DIR => a directory where to create JOB directories
 #               NOSTART => 1 no external process will be started
+#               TIMEOUT => number of second to spend
 #-----------------------------------------------------------------
 sub start {
     my $class = shift;
     croak ("START: Undefined external process.")
 	unless @_ > 0;
     my ($args, $options) = _process_start_args (@_);
+    _check_options ($options);
 
     # create a job ID and a job directory
     my $jobid = _generate_job_id ($options);
     my $dir = _id2dir ($jobid);
 
     # create configuration file
-    my $cfgfile = _start_config ($jobid, $args, $options);
+    my ($cfg, $cfgfile) = _start_config ($jobid, $args, $options);
 
-    # print "READ: " . $cfg->param ("job.id") . "\n";
-    # print `cat $cfgfile`;
+    # demonize itself
+    my $daemon = Proc::Daemon->new(
+	work_dir     => $dir,
+	child_STDOUT => File::Spec->catfile ($dir, STDOUT_FILE),
+	child_STDERR => File::Spec->catfile ($dir, STDERR_FILE),
+	);
+    my $daemon_pid = $daemon->Init();
+    if ($daemon_pid) {
+	# this is a parent of the already detached daemon
+	return $jobid;
+    }
 
-    # ...
-    # exexute the wrapper
-    #my @wrapper_args = ('./wrapper.pl', $jobid);
+    #
+    # --- this is the daemon (child) branch
+    #
 
-    # use Proc::Daemon;
-    # my $daemon = Proc::Daemon->new(
-    # 	work_dir     => '/home/senger/my-perl-modules/Proc-Async',
-    # 	child_STDOUT => '/home/senger/my-perl-modules/Proc-Async/stdout.file',
-    # 	child_STDERR => '/home/senger/my-perl-modules/Proc-Async/stderr.file',
-    # 	pid_file     => '/home/senger/my-perl-modules/Proc-Async/pid.file',
-    # 	exec_command => "./wrapper.pl $jobid",
-    # 	);
-    # $daemon->Init();
+    # fork and start an external process
+    my $pid = fork();
 
-    return $jobid;
+    if ($pid) {
+	#
+	# --- this branch is executed in the parent (wrapper) process;
+	#
+
+	# update the configuration file
+	$cfg->param ("job.pid", $pid);
+	$cfg->param ("job.status", STATUS_RUNNING);
+	$cfg->save();
+
+	# wait for the child process to finish
+	# TBD: if TIMEOUT then use alasrm and non-blocking waitpid
+	my $reaped_pid = waitpid ($pid, 0);
+	my $reaped_status = $?;
+
+	if ($reaped_status == -1) {
+	    update_status ($cfg,
+			   STATUS_UNKNOWN,
+			   "No such child process"); # can happen?
+
+	} elsif ($reaped_status & 127) {
+	    update_status ($cfg,
+			   STATUS_TERM_BY_REQ,
+			   "Terminated by signal " . ($reaped_status & 127),
+			   (($reaped_status & 128) ? "With" : "Without") . " coredump");
+
+	} else {
+	    my $exit_code = $reaped_status >> 8;
+	    if ($exit_code == 0) {
+		update_status ($cfg,
+			       STATUS_COMPLETED,
+			       "Exit code: $exit_code");
+	    } else {
+		update_status ($cfg,
+			       STATUS_TERM_BY_ERR,
+			       "Exit code: $exit_code");
+	    }
+	}
+	$cfg->save();
+
+    } elsif ($pid == 0) {
+	#
+	# --- this branch is executed in the just started child process
+	#
+
+	# replace itself by an external process
+	exec (@$args) or
+	    croak "Cannot execute the external process: " . _join_args ($args) . "\n";
+
+    } else {
+	#
+	# --- this branch is executed only when there is an error in the forking
+	#
+	croak "Cannot start an external process: " . _join_args ($args) . " - $!\n";
+    }
+}
+
+# pretty print of the list of arguments (given as an arrayref)
+sub _join_args {
+    my $args = shift;
+    return join (" ", map {"'$_'"} @$args);
+}
+
+# update status and its details (just in memory - in the given $cfg)
+sub update_status {
+    my ($cfg, $status, @details) = @_;
+
+    # remove the existing status and its details
+
+    # put updated values
+    $cfg->param ("job.status", $status);
+    foreach my $detail (@details) {
+	$cfg->param ("job.status.detail", $detail);
+    }
 }
 
 # -----------------------------------------------------------------
@@ -86,7 +172,6 @@ sub status {
     my $dir = _id2dir ($jobid);
     my ($cfg, $cfgfile) = $class->get_configuration ($dir);
     my $status = $cfg->param ('job.status');
-    # return ($status ? $status : STATUS_UNKNOWN);
     return ($status or STATUS_UNKNOWN);
 }
 
@@ -131,6 +216,50 @@ sub _process_start_args {
 }
 
 #-----------------------------------------------------------------
+# Check given $options (a hashref), some may be removed.
+# -----------------------------------------------------------------
+sub _check_options {
+    my $options = shift;
+
+    # TIMEOUT may not be used on some architectures; must be a
+    # positive integer
+    if (exists $options->{TIMEOUT}) {
+	my $timeout = $options->{TIMEOUT};
+	if (_is_int ($timeout)) {
+	    if ($timeout == 0) {
+		delete $options->{TIMEOUT};
+	    } elsif ($timeout < 0) {
+		delete $options->{TIMEOUT};
+		carp "Warning: Option TIMEOUT is negative. Ignored.\n";
+	    }
+	} else {
+	    delete $options->{TIMEOUT};
+	    carp "Warning: Option TIMEOUT is not a number (found '$options->{TIMEOUT}'). Ignored.\n";
+	}
+	if (exists $options->{TIMEOUT}) {
+	    my $has_nonblocking = $Config{d_waitpid} eq "define" || $Config{d_wait4} eq "define";
+	    unless ($has_nonblocking) {
+		delete $options->{TIMEOUT};
+		carp "Warning: Option TIMEOUT cannot be used on this system. Ignored.\n";
+	    }
+	}
+    }
+
+    # check for unknown options
+    foreach my $key (sort keys %$options) {
+	carp "Warning: Unknown option '$key'. Ignored.\n"
+	    unless exists $KNOWN_OPTIONS->{$key};
+    }
+
+}
+
+sub _is_int {
+    my ($self, $str) = @_;
+    return unless defined $str;
+    return $str =~ /^[+-]?\d+$/ ? 1 : undef;
+}
+
+#-----------------------------------------------------------------
 # Create a configuration instance and load it from the configuration
 # file (if exists) for the given job. Return ($cfg, $cfgfile).
 # -----------------------------------------------------------------
@@ -143,8 +272,9 @@ sub get_configuration {
 }
 
 #-----------------------------------------------------------------
-# Create and fill the configuration file. Return the filename.
-#-----------------------------------------------------------------
+# Create and fill the configuration file. Return the filename and a
+# configuration instance.
+# -----------------------------------------------------------------
 sub _start_config {
     my ($jobid, $args, $options) = @_;
 
@@ -162,7 +292,7 @@ sub _start_config {
     $cfg->param ("job.status", STATUS_CREATED);
 
     $cfg->save();
-    return $cfgfile;
+    return ($cfg, $cfgfile);
 }
 
 #-----------------------------------------------------------------

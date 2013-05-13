@@ -122,6 +122,11 @@ sub param {
     return wantarray ? @{ $self->{data}->{$name} } : $self->{data}->{$name}->[0];
 }
 
+sub remove {
+    my ($self, $name) = @_;
+    # TBD
+}
+
 #-----------------------------------------------------------------
 # Create a configuration file (overwrite if exists). The name is
 # either given here or the one given in the constructor.
