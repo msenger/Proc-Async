@@ -1,7 +1,7 @@
 #!perl -T
 
 #use Test::More qw(no_plan);
-use Test::More tests => 7;
+use Test::More tests => 8;
 
 # -----------------------------------------------------------------
 # Tests start here...
@@ -26,5 +26,11 @@ ok (!-e $dir, "Directory '$dir' should not exist");
 
 # job ID is the same as job directory
 is ($jobid, $dir, "Job ID is not equal to the job directory");
+
+# use a specific location for the tempdir
+use File::Temp qw/ tempdir /;
+my $newdir = tempdir ( CLEANUP => 1 );
+my $another_jobid = Proc::Async::_generate_job_id ({ DIR => $newdir });
+ok (defined $another_jobid, "Job ID is empty (2)");
 
 __END__

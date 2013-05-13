@@ -12,6 +12,7 @@ use strict;
 package Proc::Async;
 
 use Carp;
+use File::Temp qw/ tempdir /;
 use Proc::Async::Config;
 
 # VERSION
@@ -40,7 +41,7 @@ use constant {
 #  @args    ... an array with the full command-line (including the
 #               external program name)
 #  $options ... a hashref with additional options:
-#               DIR => where to create JOB directories
+#               DIR => a directory where to create JOB directories
 #               NOSTART => 1 no external process will be started
 #-----------------------------------------------------------------
 sub start {
@@ -50,7 +51,7 @@ sub start {
     my ($args, $options) = _process_start_args (@_);
 
     # create a job ID and a job directory
-    my $jobid = _generate_job_id();
+    my $jobid = _generate_job_id ($options);
     my $dir = _id2dir ($jobid);
 
     # create configuration file
@@ -60,6 +61,18 @@ sub start {
     # print `cat $cfgfile`;
 
     # ...
+    # exexute the wrapper
+    #my @wrapper_args = ('./wrapper.pl', $jobid);
+
+    # use Proc::Daemon;
+    # my $daemon = Proc::Daemon->new(
+    # 	work_dir     => '/home/senger/my-perl-modules/Proc-Async',
+    # 	child_STDOUT => '/home/senger/my-perl-modules/Proc-Async/stdout.file',
+    # 	child_STDERR => '/home/senger/my-perl-modules/Proc-Async/stderr.file',
+    # 	pid_file     => '/home/senger/my-perl-modules/Proc-Async/pid.file',
+    # 	exec_command => "./wrapper.pl $jobid",
+    # 	);
+    # $daemon->Init();
 
     return $jobid;
 }
@@ -164,11 +177,17 @@ sub _cfg_escape {
     return "\"$value\"";
 }
 
-# create and return a uniq ID
+#-----------------------------------------------------------------
+# Create and return a unique ID
+# (the ID may be influenced by some of the $options).
+#-----------------------------------------------------------------
 sub _generate_job_id {
-    use File::Temp qw/ tempdir /;
-    my $dir = tempdir ( CLEANUP => 0 );
-    return $dir;
+    my $options = shift;  # an optional hashref
+    if ($options and exists $options->{DIR}) {
+	return tempdir ( CLEANUP => 0, DIR => $options->{DIR} );
+    } else {
+	return tempdir ( CLEANUP => 0 );
+    }
 }
 
 # return a name of a directory asociated with the given job ID;
