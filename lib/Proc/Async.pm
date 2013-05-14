@@ -14,16 +14,17 @@ package Proc::Async;
 use Carp;
 use File::Temp qw/ tempdir /;
 use File::Spec;
+use File::Find;
+use File::Slurp;
 use Proc::Async::Config;
 use Proc::Daemon;
 use Config;
 
 # VERSION
 
-use constant STDOUT_FILE => 'proc_async_stdout';
-use constant STDERR_FILE => 'proc_async_stderr';
-use constant PID_FILE    => 'proc_async_pid';
-use constant CONFIG_FILE => 'proc_async_status.cfg';
+use constant STDOUT_FILE => '___proc_async_stdout___';
+use constant STDERR_FILE => '___proc_async_stderr___';
+use constant CONFIG_FILE => '___proc_async_status.cfg';
 
 use constant {
     STATUS_UNKNOWN     => 'unknown',
@@ -98,7 +99,7 @@ sub start {
 	$cfg->save();
 
 	# wait for the child process to finish
-	# TBD: if TIMEOUT then use alasrm and non-blocking waitpid
+	# TBD: if TIMEOUT then use alarm and non-blocking waitpid
 	my $reaped_pid = waitpid ($pid, 0);
 	my $reaped_status = $?;
 
@@ -118,14 +119,17 @@ sub start {
 	    if ($exit_code == 0) {
 		update_status ($cfg,
 			       STATUS_COMPLETED,
-			       "Exit code: $exit_code");
+			       "exit code: $exit_code");
 	    } else {
 		update_status ($cfg,
 			       STATUS_TERM_BY_ERR,
-			       "Exit code: $exit_code");
+			       "exit code: $exit_code");
 	    }
 	}
 	$cfg->save();
+
+	# the wrapper of the daemon finishes; do not return anything
+	exit (0);
 
     } elsif ($pid == 0) {
 	#
@@ -155,6 +159,8 @@ sub update_status {
     my ($cfg, $status, @details) = @_;
 
     # remove the existing status and its details
+    $cfg->remove ("job.status");
+    $cfg->remove ("job.status.detail");
 
     # put updated values
     $cfg->param ("job.status", $status);
@@ -164,15 +170,93 @@ sub update_status {
 }
 
 # -----------------------------------------------------------------
-# Return status of the given job (given by $jobid).
+# Return status of the given job (given by $jobid). In array context,
+# it also returns (optional) details of the status.
 # -----------------------------------------------------------------
 sub status {
     my ($class, $jobid) = @_;
     _check_jobid ($jobid);   # may croak
+    return unless defined wantarray; # don't bother doing more
     my $dir = _id2dir ($jobid);
     my ($cfg, $cfgfile) = $class->get_configuration ($dir);
-    my $status = $cfg->param ('job.status');
-    return ($status or STATUS_UNKNOWN);
+    my $status = $cfg->param ('job.status') || STATUS_UNKNOWN;
+    my @details = $cfg->param ('job.status.detail') || ();
+    return wantarray ? ($status, @details) : $status;
+}
+
+#-----------------------------------------------------------------
+# Return a list of (some) filenames in a job directory that is
+# specified by the given $jobid. The filenames are relative to this
+# job directory, and they may include subdirectories if there are
+# subdirectories within this job directory. The files with the special
+# names (see the constants STDOUT_FILE, STDERR_FILE, CONFIG_FILE) aee
+# ignored. If there is an empty directory, it is also ignored.
+#
+# For example, if the contents of a job directory is:
+#    ___proc_async_stdout___
+#    ___proc_async_stderr___
+#    ___proc_async_status.cfg
+#    a.file
+#    a.dir/
+#       file1
+#       file2
+#       b.dir/
+#          file3
+#    empty.dir/
+#
+# then the returned list will look like this:
+#    ('a.file',
+#     'a.dir/file1',
+#     'a.dir/file2',
+#     'b.dir/file3')
+#
+# It can croak if the $jobid is empty. If it does not represent an
+# existing (and readable) directory, it returns an empty list (without
+# croaking).
+# -----------------------------------------------------------------
+sub result_list {
+    my ($class, $jobid) = @_;
+    _check_jobid ($jobid);   # may croak
+    my $dir = _id2dir ($jobid);
+
+    my @files = ();
+    find (
+	sub {
+	    my $regex = quotemeta ($dir);
+	    unless (m{^\.\.?$} || -d) {
+		my $file = $File::Find::name;
+		$file =~ s{^$regex[/\\]?}{};
+		push (@files, $file)
+		    unless
+		    $file eq STDOUT_FILE or
+		    $file eq STDERR_FILE or
+		    $file eq CONFIG_FILE;
+	    }
+	  },
+	$dir);
+    return @files;
+}
+
+#-----------------------------------------------------------------
+# Return the content of the given $file from the job given by
+# $jobid. The $file is a relative filename; must be one of those
+# returned by method result_list().
+#
+# Return undef if the $file does not exist (or if it does not exist in
+# the list returned by result_list().
+# -----------------------------------------------------------------
+sub result {
+    my ($class, $jobid, $file) = @_;
+    my @allowed_files = $class->result_list ($jobid);
+    _check_jobid ($jobid);   # may croak
+    my $dir = _id2dir ($jobid);
+
+    my $is_allowed = 0;
+    foreach my $allowed (@allowed_files) {
+	$is_allowed = 1 and last if $file eq $allowed;
+    }
+    return undef unless $is_allowed;
+    return read_file (File::Spec->catfile ($dir, $file);
 }
 
 #-----------------------------------------------------------------
@@ -182,7 +266,12 @@ sub clean {
     my ($class, $jobid) = @_;
     _check_jobid ($jobid);   # may croak
     my $dir = _id2dir ($jobid);
-    unlink (STDOUT_FILE, STDERR_FILE, PID_FILE, CONFIG_FILE);
+
+    foreach my $file (STDOUT_FILE, STDERR_FILE, CONFIG_FILE) {
+	my $fullname = File::Spec->catfile ($dir, $file);
+	unlink $fullname or
+	    carp "Could not delete $fullname: $!";
+    }
     rmdir $dir
 	or croak "Cannot rmdir '$dir': $!";
 }
@@ -192,7 +281,7 @@ sub clean {
 # -----------------------------------------------------------------
 sub _check_jobid {
     my $jobid = shift;
-    croak ("Undefined Job ID ($jobid).\n")
+    croak ("Missing job ID.\n")
 	unless $jobid;
 }
 

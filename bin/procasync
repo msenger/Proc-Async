@@ -85,9 +85,17 @@ if (@opt_start) {
 }
 
 if ($opt_status) {
-    my $status = Proc::Async->status ( $opt_jobid, $opt_opts );
+    my @status = Proc::Async->status ($opt_jobid);
     qmsg ("Status of $opt_jobid: ");
-    print STDOUT "$status\n";
+    print STDOUT join (", ", @status) . "\n";
+
+    my @files = Proc::Async->result_list ($opt_jobid);
+    print STDOUT join ("\n", @files) . "\n";
+}
+
+if ($opt_clean) {
+    Proc::Async->clean ($opt_jobid);
+    qmsg ("Data for job $opt_jobid has been cleaned.\n");
 }
 
 __END__

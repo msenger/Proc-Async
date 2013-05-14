@@ -74,6 +74,9 @@ if ($opt_progress) {
     sleep ($opt_sleep);    
 }
 
+# if ($opt_file) {
+# }
+
 kill ($opt_signal => $$) if $opt_signal;
 exit (defined $opt_exit ? $opt_exit : 0);
 

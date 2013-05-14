@@ -124,7 +124,7 @@ sub param {
 
 sub remove {
     my ($self, $name) = @_;
-    # TBD
+    return delete $self->{data}->{$name};
 }
 
 #-----------------------------------------------------------------
