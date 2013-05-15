@@ -11,6 +11,9 @@
 
 use warnings;
 use strict;
+use File::Basename;
+use File::Path qw(make_path);
+use File::Slurp;
 
 our $VERSION;
 
@@ -18,6 +21,7 @@ our $VERSION;
 # Command-line arguments and script usage
 # -----------------------------------------------------------------
 my ($opt_stdout, $opt_stderr, $opt_exit, $opt_signal, $opt_sleep, $opt_progress);
+my ($opt_create);
 BEGIN {
     use Getopt::Long;
 
@@ -30,12 +34,13 @@ BEGIN {
 				       exit (0); },
 
                  #
-                 'stdout=s'   => \$opt_stdout,
-                 'stderr=s'   => \$opt_stderr,
-                 'exit=i'     => \$opt_exit,
-                 'signal=i'   => \$opt_signal,
-                 'sleep=i'    => \$opt_sleep,
-                 'progress=i' => \$opt_progress,
+                 'stdout=s'        => \$opt_stdout,
+                 'stderr=s'        => \$opt_stderr,
+                 'exit=i'          => \$opt_exit,
+                 'signal=i'        => \$opt_signal,
+                 'sleep=i'         => \$opt_sleep,
+                 'progress=i'      => \$opt_progress,
+                 'create=s%{1,50}' => \$opt_create,
 
         ) or exit 1;
 }  # end of BEGIN
@@ -74,8 +79,23 @@ if ($opt_progress) {
     sleep ($opt_sleep);    
 }
 
-# if ($opt_file) {
-# }
+if ($opt_create) {
+    # e.g. extester -create a.tmp=1 dir/dor/b.tmp=5 empty.dir/=0
+    foreach my $file (keys %$opt_create) {
+	my ($filename, $dirs, $suffix) = fileparse ($file);
+	if ($dirs and $dirs ne './') {
+	    make_path ($dirs);  # like: mkdir -p
+	}
+	if ($filename) {
+	    my $count = $opt_create->{$file};
+	    unless (is_good_number ($count)) {
+		warn "EXTESTER: '-create $file=$count' does not contain a non-negative integer. Changed to 1.\n";
+		$count = 1;
+	    }
+	    write_file ($file, map {"$_\n"} (1..$count));
+	}
+    }
+}
 
 kill ($opt_signal => $$) if $opt_signal;
 exit (defined $opt_exit ? $opt_exit : 0);
@@ -83,13 +103,21 @@ exit (defined $opt_exit ? $opt_exit : 0);
 sub progress_report {
     print STDERR "Progress reported at ", scalar localtime, "\n";
 }
+
+sub is_good_number {
+    my $str = shift;
+    return unless defined $str;
+    return $str =~ /^[+]?\d+$/ ? 1 : undef;
+}
+
 __END__
 
 =head1 SYNOPSIS
 
-   extester [-stdout <text>]  [-stderr <text>]        \
-            [-exit <integer>] [-signal <integer>]     \
-            [-sleep <seconds> [-progress <seconds>] ]
+   extester [-stdout <text>]  [-stderr <text>]            \
+            [-exit <integer>] [-signal <integer>]         \
+            [-sleep <seconds> [-progress <seconds>] ]     \
+            [-create <file>=<number> [<file>=<number>...]
 
    extester -h
    extester -help
@@ -115,6 +143,19 @@ A simple script that does nothing except that:
 
 =item * it may print a short progress report on its standard error every
 given interval
+
+=item * it may create one or more output files (whose names may iclude
+subdirectorie that will also be created) and fill them with the given
+number of lines
+
+For example:
+   extester -create a.tmp=1 dir/dor/b.tmp=5 empty.dir/=0
+
+creates:
+   ./a.tmp          size:  2
+   ./dir/dor/b.tmp  size: 15
+   ./empty.dir      an empty directory
+ 
 
 =back
 

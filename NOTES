@@ -55,3 +55,10 @@ Configuration file:
   job.started = ...starting time of the external process (number)
   job.ended = ...ending time of the external process (number)
   option.XYZ = ...
+
+---
+bin/procasync -start '/home/senger/my-perl-modules/Proc-Async/t/data/extester -stdout an-out -stderr an-err -exit 5 -create a.tmp=5 few/new/dirs/b.tmp=3 an/empty/dir/=0'
+
+How to print all results of a job:
+jobid=/tmp/PxF3EdwBBG ; for n in `bin/procasync -jobid $jobid -rlist -q`; do bin/procasync -jobid $jobid -result $n; done
+

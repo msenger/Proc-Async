@@ -175,7 +175,6 @@ sub update_status {
 # -----------------------------------------------------------------
 sub status {
     my ($class, $jobid) = @_;
-    _check_jobid ($jobid);   # may croak
     return unless defined wantarray; # don't bother doing more
     my $dir = _id2dir ($jobid);
     my ($cfg, $cfgfile) = $class->get_configuration ($dir);
@@ -185,11 +184,19 @@ sub status {
 }
 
 #-----------------------------------------------------------------
+# Return the name of the working directory for the given $jobid.
+# -----------------------------------------------------------------
+sub working_dir {
+    my ($class, $jobid) = @_;
+    return _id2dir ($jobid);
+}
+
+#-----------------------------------------------------------------
 # Return a list of (some) filenames in a job directory that is
 # specified by the given $jobid. The filenames are relative to this
 # job directory, and they may include subdirectories if there are
 # subdirectories within this job directory. The files with the special
-# names (see the constants STDOUT_FILE, STDERR_FILE, CONFIG_FILE) aee
+# names (see the constants STDOUT_FILE, STDERR_FILE, CONFIG_FILE) are
 # ignored. If there is an empty directory, it is also ignored.
 #
 # For example, if the contents of a job directory is:
@@ -216,7 +223,6 @@ sub status {
 # -----------------------------------------------------------------
 sub result_list {
     my ($class, $jobid) = @_;
-    _check_jobid ($jobid);   # may croak
     my $dir = _id2dir ($jobid);
 
     my @files = ();
@@ -248,15 +254,32 @@ sub result_list {
 sub result {
     my ($class, $jobid, $file) = @_;
     my @allowed_files = $class->result_list ($jobid);
-    _check_jobid ($jobid);   # may croak
     my $dir = _id2dir ($jobid);
-
-    my $is_allowed = 0;
-    foreach my $allowed (@allowed_files) {
-	$is_allowed = 1 and last if $file eq $allowed;
-    }
+    my $is_allowed = exists { map {$_ => 1} @allowed_files }->{$file};
     return undef unless $is_allowed;
-    return read_file (File::Spec->catfile ($dir, $file);
+    return read_file (File::Spec->catfile ($dir, $file));
+}
+
+#-----------------------------------------------------------------
+# Return the content of the STDOUT from the job given by $jobid. It
+# may be an empty string if the job did not produce any STDOUT.
+# -----------------------------------------------------------------
+sub stdout {
+    my ($class, $jobid) = @_;
+    my $dir = _id2dir ($jobid);
+    my $stdout_file = File::Spec->catfile ($dir, STDOUT_FILE);
+    return read_file ($stdout_file);
+}
+
+#-----------------------------------------------------------------
+# Return the content of the STDERR from the job given by $jobid. It
+# may be an empty string if the job did not produce any STDERR.
+# -----------------------------------------------------------------
+sub stderr {
+    my ($class, $jobid) = @_;
+    my $dir = _id2dir ($jobid);
+    my $stdout_file = File::Spec->catfile ($dir, STDERR_FILE);
+    return read_file ($stdout_file);
 }
 
 #-----------------------------------------------------------------
@@ -264,7 +287,6 @@ sub result {
 # -----------------------------------------------------------------
 sub clean {
     my ($class, $jobid) = @_;
-    _check_jobid ($jobid);   # may croak
     my $dir = _id2dir ($jobid);
 
     foreach my $file (STDOUT_FILE, STDERR_FILE, CONFIG_FILE) {
@@ -274,15 +296,6 @@ sub clean {
     }
     rmdir $dir
 	or croak "Cannot rmdir '$dir': $!";
-}
-
-#-----------------------------------------------------------------
-# Check the presence of a $jobid; croak if it is missing.
-# -----------------------------------------------------------------
-sub _check_jobid {
-    my $jobid = shift;
-    croak ("Missing job ID.\n")
-	unless $jobid;
 }
 
 #-----------------------------------------------------------------
@@ -343,7 +356,7 @@ sub _check_options {
 }
 
 sub _is_int {
-    my ($self, $str) = @_;
+    my ($str) = @_;
     return unless defined $str;
     return $str =~ /^[+-]?\d+$/ ? 1 : undef;
 }
@@ -410,11 +423,11 @@ sub _generate_job_id {
 }
 
 # return a name of a directory asociated with the given job ID;
-# in this implementation, it returns the same value as the job ID
+# in this implementation, it returns the same value as the job ID;
+# it croaks if called without a parameter
 sub _id2dir {
-    return shift;
+    shift() or croak ("Missing job ID.\n");
 }
-
 
 1;
 
