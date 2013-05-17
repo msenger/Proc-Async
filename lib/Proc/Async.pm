@@ -12,7 +12,8 @@ use strict;
 package Proc::Async;
 
 use Carp;
-use File::Temp qw/ tempdir /;
+use File::Temp qw{ tempdir };
+use File::Path qw{ remove_tree };
 use File::Spec;
 use File::Find;
 use File::Slurp;
@@ -37,8 +38,7 @@ use constant {
 };
 
 my $KNOWN_OPTIONS = {
-    DIR     => 1,
-    # NOSTART => 1,
+    # DIR     => 1,
     TIMEOUT => 1,
 };
 
@@ -51,8 +51,7 @@ my $KNOWN_OPTIONS = {
 #  @args    ... an array with the full command-line (including the
 #               external program name)
 #  $options ... a hashref with additional options:
-#               DIR => a directory where to create JOB directories
-#               NOSTART => 1 no external process will be started
+####               DIR => a directory where to create JOB directories
 #               TIMEOUT => number of second to spend
 #-----------------------------------------------------------------
 sub start {
@@ -95,7 +94,10 @@ sub start {
 
 	# update the configuration file
 	$cfg->param ("job.pid", $pid);
-	$cfg->param ("job.status", STATUS_RUNNING);
+	update_status ($cfg,
+		       STATUS_RUNNING,
+		       "started at " . scalar localtime());
+	$cfg->param ("job.started", time());
 	$cfg->save();
 
 	# wait for the child process to finish
@@ -111,19 +113,25 @@ sub start {
 	} elsif ($reaped_status & 127) {
 	    update_status ($cfg,
 			   STATUS_TERM_BY_REQ,
-			   "Terminated by signal " . ($reaped_status & 127),
-			   (($reaped_status & 128) ? "With" : "Without") . " coredump");
+			   "terminated by signal " . ($reaped_status & 127),
+			   (($reaped_status & 128) ? "with" : "without") . " coredump",
+			   "terminated at " . scalar localtime(),
+			   _elapsed_time ($cfg));
 
 	} else {
 	    my $exit_code = $reaped_status >> 8;
 	    if ($exit_code == 0) {
 		update_status ($cfg,
 			       STATUS_COMPLETED,
-			       "exit code: $exit_code");
+			       "exit code $exit_code",
+			       "completed at " . scalar localtime(),
+			       _elapsed_time ($cfg));
 	    } else {
 		update_status ($cfg,
 			       STATUS_TERM_BY_ERR,
-			       "exit code: $exit_code");
+			       "exit code $exit_code",
+			       "completed at " . scalar localtime(),
+			       _elapsed_time ($cfg));
 	    }
 	}
 	$cfg->save();
@@ -148,13 +156,47 @@ sub start {
     }
 }
 
-# pretty print of the list of arguments (given as an arrayref)
+#-----------------------------------------------------------------
+# Pretty print of the list of arguments (given as an arrayref).
+#-----------------------------------------------------------------
 sub _join_args {
     my $args = shift;
     return join (" ", map {"'$_'"} @$args);
 }
 
-# update status and its details (just in memory - in the given $cfg)
+#-----------------------------------------------------------------
+# Return a pretty-formatted elapsed time of the just finished job.
+#-----------------------------------------------------------------
+sub _elapsed_time {
+    my $cfg = shift;
+    my $started = $cfg->param ("job.started");
+    return "elapsed time unknown" unless $started;
+    my $elapsed = time() - $started;
+    return "elapsed time $elapsed seconds";
+}
+
+#-----------------------------------------------------------------
+# Extract arguments for the start() method and return:
+#  ( [args], {options} )
+# -----------------------------------------------------------------
+sub _process_start_args {
+    my @args;
+    my $options;
+    if (ref $_[0] and ref $_[0] eq 'ARRAY') {
+	# arguments for external process are given as an arrayref...
+	@args = @{ shift() };
+	$options = (ref $_[0] and ref $_[0] eq 'HASH') ? shift @_ : {};
+    } else {
+	# arguments for external process are given as an array...
+	$options = (ref $_[-1] and ref $_[-1] eq 'HASH') ? pop @_ : {};
+	@args = @_;
+    }
+    return (\@args, $options);
+}
+
+#-----------------------------------------------------------------
+# Update status and its details (just in memory - in the given $cfg).
+#-----------------------------------------------------------------
 sub update_status {
     my ($cfg, $status, @details) = @_;
 
@@ -166,6 +208,13 @@ sub update_status {
     $cfg->param ("job.status", $status);
     foreach my $detail (@details) {
 	$cfg->param ("job.status.detail", $detail);
+    }
+
+    # note the finished time if the new status indicates the termination
+    if ($status eq STATUS_COMPLETED or
+	$status eq STATUS_TERM_BY_REQ or
+	$status eq STATUS_TERM_BY_ERR) {
+	$cfg->param ("job.ended", time());
     }
 }
 
@@ -179,16 +228,18 @@ sub status {
     my $dir = _id2dir ($jobid);
     my ($cfg, $cfgfile) = $class->get_configuration ($dir);
     my $status = $cfg->param ('job.status') || STATUS_UNKNOWN;
-    my @details = $cfg->param ('job.status.detail') || ();
+    my @details = ($cfg->param ('job.status.detail') ? $cfg->param ('job.status.detail') : ());
     return wantarray ? ($status, @details) : $status;
 }
 
 #-----------------------------------------------------------------
 # Return the name of the working directory for the given $jobid.
+# Or undef if such working directory does not exist.
 # -----------------------------------------------------------------
 sub working_dir {
     my ($class, $jobid) = @_;
-    return _id2dir ($jobid);
+    my $dir = _id2dir ($jobid);
+    return -e $dir && -d $dir ? $dir : undef;
 }
 
 #-----------------------------------------------------------------
@@ -224,6 +275,7 @@ sub working_dir {
 sub result_list {
     my ($class, $jobid) = @_;
     my $dir = _id2dir ($jobid);
+    return () unless -e $dir;
 
     my @files = ();
     find (
@@ -262,24 +314,32 @@ sub result {
 
 #-----------------------------------------------------------------
 # Return the content of the STDOUT from the job given by $jobid. It
-# may be an empty string if the job did not produce any STDOUT.
+# may be an empty string if the job did not produce any STDOUT, or if
+# the job does not exist anymore.
 # -----------------------------------------------------------------
 sub stdout {
     my ($class, $jobid) = @_;
     my $dir = _id2dir ($jobid);
     my $stdout_file = File::Spec->catfile ($dir, STDOUT_FILE);
-    return read_file ($stdout_file);
+    eval {
+	return read_file ($stdout_file);
+    };
+    return "";
 }
 
 #-----------------------------------------------------------------
 # Return the content of the STDERR from the job given by $jobid. It
-# may be an empty string if the job did not produce any STDERR.
+# may be an empty string if the job did not produce any STDERR, or if
+# the job does not exist anymore.
 # -----------------------------------------------------------------
 sub stderr {
     my ($class, $jobid) = @_;
     my $dir = _id2dir ($jobid);
     my $stdout_file = File::Spec->catfile ($dir, STDERR_FILE);
-    return read_file ($stdout_file);
+    eval {
+	return read_file ($stdout_file);
+    };
+    return "";
 }
 
 #-----------------------------------------------------------------
@@ -288,33 +348,27 @@ sub stderr {
 sub clean {
     my ($class, $jobid) = @_;
     my $dir = _id2dir ($jobid);
-
-    foreach my $file (STDOUT_FILE, STDERR_FILE, CONFIG_FILE) {
-	my $fullname = File::Spec->catfile ($dir, $file);
-	unlink $fullname or
-	    carp "Could not delete $fullname: $!";
-    }
-    rmdir $dir
-	or croak "Cannot rmdir '$dir': $!";
+    my $file_count = remove_tree ($dir);  #, {verbose => 1});
+    return $file_count;
 }
 
-#-----------------------------------------------------------------
-# Extract arguments for the start() method and return:
-#  ( [args], {options} )
 # -----------------------------------------------------------------
-sub _process_start_args {
-    my @args;
-    my $options;
-    if (ref $_[0] and ref $_[0] eq 'ARRAY') {
-	# arguments for external process are given as an arrayref...
-	@args = @{ shift() };
-	$options = (ref $_[0] and ref $_[0] eq 'HASH') ? shift @_ : {};
-    } else {
-	# arguments for external process are given as an array...
-	$options = (ref $_[-1] and ref $_[-1] eq 'HASH') ? pop @_ : {};
-	@args = @_;
-    }
-    return (\@args, $options);
+# Send a signal to the given job. $signal is a positive integer
+# between 1 and 64. Default is 9 which means the KILL signal. Return
+# true on success, zero on failure (no such job, no such process). It
+# may also croak if the $jobid is invalid or missing, at all, or if
+# the $signal is invalid.
+# -----------------------------------------------------------------
+sub signal {
+    my ($class, $jobid, $signal) = @_;
+    my $dir = _id2dir ($jobid);
+    $signal = 9 unless $signal;    # Note that $signal zero is also changed to 9
+    croak "Bad signal: $signal.\n"
+	unless $signal =~ m{^[+]?\d+$};
+    my ($cfg, $cfgfile) = $class->get_configuration ($dir);
+    my $pid = $cfg->param ('job.pid');
+    return 0 unless $pid;
+    return kill $signal, $pid;
 }
 
 #-----------------------------------------------------------------
@@ -398,35 +452,36 @@ sub _start_config {
 }
 
 #-----------------------------------------------------------------
-# Return the given value unchanged if it does not contain any
-# comma. Otherwise, escape all double-quotes and return double-quoted
-# $value.
-# -----------------------------------------------------------------
-sub _cfg_escape {
-    my $value = shift;
-    return $value unless $value =~ m{\,};
-    $value =~ s{"}{\\"}g;
-    return "\"$value\"";
-}
-
-#-----------------------------------------------------------------
-# Create and return a unique ID
-# (the ID may be influenced by some of the $options).
+# Create and return a unique ID.
+#### (the ID may be influenced by some of the $options).
 #-----------------------------------------------------------------
 sub _generate_job_id {
-    my $options = shift;  # an optional hashref
-    if ($options and exists $options->{DIR}) {
-	return tempdir ( CLEANUP => 0, DIR => $options->{DIR} );
-    } else {
-	return tempdir ( CLEANUP => 0 );
-    }
+    # my $options = shift;  # an optional hashref
+    # if ($options and exists $options->{DIR}) {
+    # 	return tempdir ( CLEANUP => 0, DIR => $options->{DIR} );
+    # } else {
+	# return tempdir ( CLEANUP => 0 );
+    # }
+    return tempdir (CLEANUP => 0, DIR => File::Spec->tmpdir);
 }
 
-# return a name of a directory asociated with the given job ID;
-# in this implementation, it returns the same value as the job ID;
-# it croaks if called without a parameter
+#-----------------------------------------------------------------
+# Return a name of a directory asociated with the given job ID; in
+# this implementation, it returns the same value as the job ID; it
+# croaks if called without a parameter OR if $jobid points to a
+# strange (not expected) place.
+#-----------------------------------------------------------------
 sub _id2dir {
-    shift() or croak ("Missing job ID.\n");
+    my $jobid = shift;
+    croak ("Missing job ID.\n")
+	unless $jobid;
+
+    # does the $jobid start in the temporary directory?
+    my $tmpdir = File::Spec->tmpdir;  # this must be the same as used in _generate_job_id
+    croak ("Invalid job ID '$jobid'.\n")
+	unless $jobid =~ m{^\Q$tmpdir\E[/\\]};
+
+    return $jobid;
 }
 
 1;

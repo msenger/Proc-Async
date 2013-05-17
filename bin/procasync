@@ -13,14 +13,16 @@ use warnings;
 
 use lib 'lib';  # TBD
 use Proc::Async;
+use Data::Dumper;
 
 #------------------------------------------
 # Command-line arguments and script usage
 #------------------------------------------
 my @cfg_args;
 my ($opt_h, $opt_help, $opt_m, $opt_v, $opt_q);
-my (@opt_start, $opt_opts, $opt_jobid, $opt_status, $opt_clean, $opt_kill);
+my (@opt_start, $opt_opts, $opt_jobid, $opt_status, $opt_clean, $opt_kill, $opt_signal);
 my ($opt_wdir, $opt_rlist, $opt_result, $opt_stdout, $opt_stderr);
+my ($undoc);
 
 BEGIN {
 
@@ -40,12 +42,15 @@ BEGIN {
                  status             => \$opt_status,
                  clean              => \$opt_clean,
                  kill               => \$opt_kill,
+                 'signal=i'         => \$opt_signal,
 
                  'wdir|dir'         => \$opt_wdir,    # working directory
                  rlist              => \$opt_rlist,   # result list
                  'result=s'         => \$opt_result,  # content of a result
                  stdout             => \$opt_stdout,  # content of STDOUT
                  stderr             => \$opt_stderr,  # content of STDERR
+
+                 undoc              => \$undoc,  # undocumented
 
         ) or pod2usage (2);
     pod2usage (-verbose => 0, -exitval => 0) if $opt_h;
@@ -90,6 +95,9 @@ if (@opt_start) {
     my $jobid = Proc::Async->start ( \@opt_start, $opt_opts );
     qmsg ("ID of the started job " . join (" ", map {"'$_'"} @opt_start) . ":\n");
     print STDOUT "$jobid\n";
+    if ($undoc) {
+	qmsg ("$0 -jobid $jobid -status\n");
+    }
 }
 
 if ($opt_status) {
@@ -102,14 +110,16 @@ if ($opt_status) {
 if ($opt_wdir) {
     check_jobid;
     qmsg ("Working directory for the job '$opt_jobid':\n");
-    print STDOUT Proc::Async->working_dir ($opt_jobid), "\n";
+    my $dir = Proc::Async->working_dir ($opt_jobid);
+    print STDOUT "$dir\n" if $dir;
 }
 
 if ($opt_rlist) {
     check_jobid;
     qmsg ("List of files with results for the job '$opt_jobid':\n");
     my @files = Proc::Async->result_list ($opt_jobid);
-    print STDOUT join ("\n", @files) . "\n";
+    print STDOUT join ("\n", @files);
+    print "\n" if @files > 0;
 }
 
 if ($opt_result) {
@@ -120,7 +130,7 @@ if ($opt_result) {
 	print STDOUT $content;
     } else {
 	my @files = Proc::Async->result_list ($opt_jobid);
-	die "'$opt_result' is a non-existing result name.\n"
+	die "Result '$opt_result' does not exist or does not belong to you.\n"
 	    unless exists { map {$_ => 1} @files }->{$opt_result};
     }
 }
@@ -137,10 +147,27 @@ if ($opt_stderr) {
     print STDOUT Proc::Async->stderr ($opt_jobid);
 }
 
+if ($opt_kill) {
+    check_jobid;
+    qmsg ("Killing job '$opt_jobid': ");
+    qmsg (Proc::Async->signal ($opt_jobid, 9) ? "success\n" : "failure\n");
+}
+
+if ($opt_signal) {
+    check_jobid;
+    qmsg ("Signalling job '$opt_jobid': ");
+    qmsg (Proc::Async->signal ($opt_jobid, $opt_signal) ? "success\n" : "failure\n");
+}
+
 if ($opt_clean) {
     check_jobid;
-    Proc::Async->clean ($opt_jobid);
-    qmsg ("Data for job $opt_jobid has been cleaned.\n");
+
+    # a bit of precaution (try to be sure that given $jobid is a valid
+    # one, pointing only to our job space)
+
+    qmsg ("Cleaning data for the job $opt_jobid:\n");
+    my $file_count = Proc::Async->clean ($opt_jobid);
+    qmsg ("$file_count files for job $opt_jobid have been deleted.\n");
 }
 
 __END__
