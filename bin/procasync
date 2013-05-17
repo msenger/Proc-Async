@@ -98,13 +98,7 @@ if (@opt_start) {
     if ($undoc) {
 	qmsg ("$0 -jobid $jobid -status\n");
     }
-}
-
-if ($opt_status) {
-    check_jobid;
-    my @status = Proc::Async->status ($opt_jobid);
-    qmsg ("Status of $opt_jobid: ");
-    print STDOUT join (", ", @status) . "\n";
+    $opt_jobid = $jobid;
 }
 
 if ($opt_wdir) {
@@ -161,13 +155,16 @@ if ($opt_signal) {
 
 if ($opt_clean) {
     check_jobid;
-
-    # a bit of precaution (try to be sure that given $jobid is a valid
-    # one, pointing only to our job space)
-
     qmsg ("Cleaning data for the job $opt_jobid:\n");
     my $file_count = Proc::Async->clean ($opt_jobid);
     qmsg ("$file_count files for job $opt_jobid have been deleted.\n");
+}
+
+if ($opt_status) {
+    check_jobid;
+    my @status = Proc::Async->status ($opt_jobid);
+    qmsg ("Status of $opt_jobid: ");
+    print STDOUT join (", ", @status) . "\n";
 }
 
 __END__

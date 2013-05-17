@@ -320,11 +320,12 @@ sub result {
 sub stdout {
     my ($class, $jobid) = @_;
     my $dir = _id2dir ($jobid);
-    my $stdout_file = File::Spec->catfile ($dir, STDOUT_FILE);
+    my $file = File::Spec->catfile ($dir, STDOUT_FILE);
+    my $content = "";
     eval {
-	return read_file ($stdout_file);
+	$content = read_file ($file);
     };
-    return "";
+    return $content;
 }
 
 #-----------------------------------------------------------------
@@ -335,11 +336,12 @@ sub stdout {
 sub stderr {
     my ($class, $jobid) = @_;
     my $dir = _id2dir ($jobid);
-    my $stdout_file = File::Spec->catfile ($dir, STDERR_FILE);
+    my $file = File::Spec->catfile ($dir, STDERR_FILE);
+    my $content = "";
     eval {
-	return read_file ($stdout_file);
+	$content = read_file ($file);
     };
-    return "";
+    return $content;
 }
 
 #-----------------------------------------------------------------

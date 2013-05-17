@@ -1,3 +1,4 @@
 *~
 Proc-Async*
 .build
+examples/cgi-bin/lib/Proc
