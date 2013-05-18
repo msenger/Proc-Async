@@ -31,7 +31,7 @@ sub new {
 
     # a config file name is mandatory
     croak ("Missing config file name in the Proc::Async::Config constructor.\n")
-	unless @args > 0;
+        unless @args > 0;
     $self->{cfgfile} = shift @args;
 
     # ...and the rest are optional name/value pairs
@@ -44,7 +44,7 @@ sub new {
 
     # load the configuration (if exists)
     $self->load()
-	if -e $self->{cfgfile};
+        if -e $self->{cfgfile};
 
     # done
     return $self;
@@ -67,29 +67,29 @@ sub load {
     my ($self, $cfgfile) = @_;
     $cfgfile = $self->{cfgfile} unless $cfgfile;
     open (my $cfg, '<', $cfgfile)
-	or croak ("Cannot open configuration file '$cfgfile': $!\n");
+        or croak ("Cannot open configuration file '$cfgfile': $!\n");
     my $count = 0;
     while (my $line = <$cfg>) {
-	$count++;
+        $count++;
 
-	# skipping comments and empty lines:
-	$line =~ /^(\n|\#)/  and next;
-	$line =~ /\S/        or  next;    
-	chomp $line;
-	$line =~ s/^\s+//g;
-	$line =~ s/\s+$//g;
+        # skipping comments and empty lines:
+        $line =~ /^(\n|\#)/  and next;
+        $line =~ /\S/        or  next;
+        chomp $line;
+        $line =~ s/^\s+//g;
+        $line =~ s/\s+$//g;
 
-	# parsing key/value pairs
-	my ($key, $value) = split (m{\s*=\s*}, $line, 2);
-	if (not defined $key or $key eq '') {
-	    # unusable key
-	    carp "Missing key in the configuration file '$cfgfile' in line $count: '$line'. Ignored.\n";
-	    next;
-	}
-	if (not defined $value or $value eq '') {
-	    $value = 1;   # an existing property must be an important property
-	}
-	$self->param ($key, $value);
+        # parsing key/value pairs
+        my ($key, $value) = split (m{\s*=\s*}, $line, 2);
+        if (not defined $key or $key eq '') {
+            # unusable key
+            carp "Missing key in the configuration file '$cfgfile' in line $count: '$line'. Ignored.\n";
+            next;
+        }
+        if (not defined $value or $value eq '') {
+            $value = 1;   # an existing property must be an important property
+        }
+        $self->param ($key, $value);
     }
     close $cfg;
 }
@@ -103,20 +103,22 @@ sub load {
 # Set the given property first if there is a second argument with the
 # property value.
 #
-# Return a sorted list of all property names if no argument given.
+# Return a sorted list of all property names if no argument given (the
+# list may be empty).
 # -----------------------------------------------------------------
 sub param {
     my ($self, $name, $value) = @_;
     unless (defined $name) {
-	return sort keys %{ $self->{data} };
+        my @names = sort keys %{ $self->{data} };
+        return (@names ? @names : ());
     }
     if (defined $value) {
-	$self->{data}->{$name} = []
-	    unless exists $self->{data}->{$name};
-	push (@{ $self->{data}->{$name} }, $value);
+        $self->{data}->{$name} = []
+            unless exists $self->{data}->{$name};
+        push (@{ $self->{data}->{$name} }, $value);
     } else {
-	return undef
-	    unless exists $self->{data}->{$name};
+        return
+            unless exists $self->{data}->{$name};
     }
     return unless defined wantarray; # don't bother doing more
     return wantarray ? @{ $self->{data}->{$name} } : $self->{data}->{$name}->[0];
@@ -135,12 +137,12 @@ sub save {
     my ($self, $cfgfile) = @_;
     $cfgfile = $self->{cfgfile} unless defined $cfgfile;
     open (my $cfg, '>', $cfgfile)
-	or croak ("Cannot create configuration file '$cfgfile': $!\n");
+        or croak ("Cannot create configuration file '$cfgfile': $!\n");
     foreach my $key (sort keys %{ $self->{data} }) {
-	my $values = $self->{data}->{$key};
-	foreach my $value (@$values) {
-	    print $cfg "$key = $value\n";
-	}
+        my $values = $self->{data}->{$key};
+        foreach my $value (@$values) {
+            print $cfg "$key = $value\n";
+        }
     }
     close $cfg;
 }

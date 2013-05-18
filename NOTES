@@ -1,64 +1,6 @@
-Types of requests:
-------------------
-
-START - start an external program and return its ID
-  Input: - (mandatory) the full command-line of the external program
-         - ... (wait for it...)
-  Return: a (timely and locationly) unique job ID of the external program (not a PID)
-
-STATUS - give me status of a previously started external program
-  Input: - (mandatory) job ID (as returned from the START request)
-  Return: a (numeric?) code: UNKNOWN, CREATED, RUNNING, COMPLETED,
-                             TERMINATED_BY_REQUEST, TERMINATED_BY_ERROR,
-                             REMOVED ?
-
-PROGRESS - give me status AND progress report (which may be the full result)
-  Input: - (mandatory) job ID (as returned from the START request)
-         - where to take progress from (STDERR, STDOUT, FILE, WRAPPER)
-         - full progress report or only partial (tail what was not yet asked for)
-         - return progress report or a file name with the progress report?
-  Return: status (see above)
-          progress report
-
-RESULT - the same as progress; which type name should I use?
-
-KILL - kill the external program; wait until it is killed
-  Input: - (mandatory) job ID (as returned from the START request)
-  Return: status (see above)
-
-CLEAN - remove files from the job
-  Input: - (mandatory) job ID (as returned from the START request)
-
-Role of the wrapper (monitor) parent:
--------------------------------------
-
-* fork the real external process
-* updates its status in the configuration file
-
-Configuration file:
--------------------
-
-* created on-the-fly within a directory based on the unique JOB id:
-
-  /blah/blah/<JOB-ID> ... directory (it also becomes a working directory of the external process)
-     proc_async_stdout.file  ... where the external process writes its STDOUT
-     proc_async_stderr.file  ... where the external process writes its STDERR
-     proc_async_pid.file     ... where the wrapper stores the PID of the external process
-     proc_async_status.cfg   ... the configuration file
-
-* proc_async_status.cfg:
-
-  job.id = ... (the same as this directory basename)
-  job.arg = ... arguments to start the external process; can be repeated
-  job.status = ...current job status
-  job.time = ...starting time of the external process (display format, with time-zone, etc.)
-  job.started = ...starting time of the external process (number)
-  job.ended = ...ending time of the external process (number)
-  option.XYZ = ...
-
----
-bin/procasync -start '/home/senger/my-perl-modules/Proc-Async/t/data/extester -stdout an-out -stderr an-err -exit 5 -create a.tmp=5 few/new/dirs/b.tmp=3 an/empty/dir/=0'
+scripts/procasync -start '/home/senger/my-perl-modules/Proc-Async/t/data/extester -stdout an-out -stderr an-err -exit 5 -create a.tmp=5 few/new/dirs/b.tmp=3 an/empty/dir/=0'
 
 How to print all results of a job:
-jobid=/tmp/PxF3EdwBBG ; for n in `bin/procasync -jobid $jobid -rlist -q`; do bin/procasync -jobid $jobid -result $n; done
+----------------------------------
+jobid=/tmp/PxF3EdwBBG ; for n in `scripts/procasync -jobid $jobid -rlist -q`; do scripts/procasync -jobid $jobid -result $n; done
 

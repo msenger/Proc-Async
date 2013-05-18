@@ -11,6 +11,8 @@ use warnings;
 use strict;
 package Proc::Async;
 
+# VERSION
+
 use Carp;
 use File::Temp qw{ tempdir };
 use File::Path qw{ remove_tree };
@@ -20,8 +22,6 @@ use File::Slurp;
 use Proc::Async::Config;
 use Proc::Daemon;
 use Config;
-
-# VERSION
 
 use constant STDOUT_FILE => '___proc_async_stdout___';
 use constant STDERR_FILE => '___proc_async_stderr___';
@@ -34,11 +34,10 @@ use constant {
     STATUS_COMPLETED   => 'completed',
     STATUS_TERM_BY_REQ => 'terminated by request',
     STATUS_TERM_BY_ERR => 'terminated by error',
-    STATUS_REMOVED     => 'removed',
 };
 
+# not used now...
 my $KNOWN_OPTIONS = {
-    # DIR     => 1,
     TIMEOUT => 1,
 };
 
@@ -51,13 +50,12 @@ my $KNOWN_OPTIONS = {
 #  @args    ... an array with the full command-line (including the
 #               external program name)
 #  $options ... a hashref with additional options:
-####               DIR => a directory where to create JOB directories
 #               TIMEOUT => number of second to spend
 #-----------------------------------------------------------------
 sub start {
     my $class = shift;
     croak ("START: Undefined external process.")
-	unless @_ > 0;
+        unless @_ > 0;
     my ($args, $options) = _process_start_args (@_);
     _check_options ($options);
 
@@ -70,14 +68,14 @@ sub start {
 
     # demonize itself
     my $daemon = Proc::Daemon->new(
-	work_dir     => $dir,
-	child_STDOUT => File::Spec->catfile ($dir, STDOUT_FILE),
-	child_STDERR => File::Spec->catfile ($dir, STDERR_FILE),
-	);
+        work_dir     => $dir,
+        child_STDOUT => File::Spec->catfile ($dir, STDOUT_FILE),
+        child_STDERR => File::Spec->catfile ($dir, STDERR_FILE),
+        );
     my $daemon_pid = $daemon->Init();
     if ($daemon_pid) {
-	# this is a parent of the already detached daemon
-	return $jobid;
+        # this is a parent of the already detached daemon
+        return $jobid;
     }
 
     #
@@ -88,71 +86,71 @@ sub start {
     my $pid = fork();
 
     if ($pid) {
-	#
-	# --- this branch is executed in the parent (wrapper) process;
-	#
+        #
+        # --- this branch is executed in the parent (wrapper) process;
+        #
 
-	# update the configuration file
-	$cfg->param ("job.pid", $pid);
-	update_status ($cfg,
-		       STATUS_RUNNING,
-		       "started at " . scalar localtime());
-	$cfg->param ("job.started", time());
-	$cfg->save();
+        # update the configuration file
+        $cfg->param ("job.pid", $pid);
+        update_status ($cfg,
+                       STATUS_RUNNING,
+                       "started at " . scalar localtime());
+        $cfg->param ("job.started", time());
+        $cfg->save();
 
-	# wait for the child process to finish
-	# TBD: if TIMEOUT then use alarm and non-blocking waitpid
-	my $reaped_pid = waitpid ($pid, 0);
-	my $reaped_status = $?;
+        # wait for the child process to finish
+        # TBD: if TIMEOUT then use alarm and non-blocking waitpid
+        my $reaped_pid = waitpid ($pid, 0);
+        my $reaped_status = $?;
 
-	if ($reaped_status == -1) {
-	    update_status ($cfg,
-			   STATUS_UNKNOWN,
-			   "No such child process"); # can happen?
+        if ($reaped_status == -1) {
+            update_status ($cfg,
+                           STATUS_UNKNOWN,
+                           "No such child process"); # can happen?
 
-	} elsif ($reaped_status & 127) {
-	    update_status ($cfg,
-			   STATUS_TERM_BY_REQ,
-			   "terminated by signal " . ($reaped_status & 127),
-			   (($reaped_status & 128) ? "with" : "without") . " coredump",
-			   "terminated at " . scalar localtime(),
-			   _elapsed_time ($cfg));
+        } elsif ($reaped_status & 127) {
+            update_status ($cfg,
+                           STATUS_TERM_BY_REQ,
+                           "terminated by signal " . ($reaped_status & 127),
+                           (($reaped_status & 128) ? "with" : "without") . " coredump",
+                           "terminated at " . scalar localtime(),
+                           _elapsed_time ($cfg));
 
-	} else {
-	    my $exit_code = $reaped_status >> 8;
-	    if ($exit_code == 0) {
-		update_status ($cfg,
-			       STATUS_COMPLETED,
-			       "exit code $exit_code",
-			       "completed at " . scalar localtime(),
-			       _elapsed_time ($cfg));
-	    } else {
-		update_status ($cfg,
-			       STATUS_TERM_BY_ERR,
-			       "exit code $exit_code",
-			       "completed at " . scalar localtime(),
-			       _elapsed_time ($cfg));
-	    }
-	}
-	$cfg->save();
+        } else {
+            my $exit_code = $reaped_status >> 8;
+            if ($exit_code == 0) {
+                update_status ($cfg,
+                               STATUS_COMPLETED,
+                               "exit code $exit_code",
+                               "completed at " . scalar localtime(),
+                               _elapsed_time ($cfg));
+            } else {
+                update_status ($cfg,
+                               STATUS_TERM_BY_ERR,
+                               "exit code $exit_code",
+                               "completed at " . scalar localtime(),
+                               _elapsed_time ($cfg));
+            }
+        }
+        $cfg->save();
 
-	# the wrapper of the daemon finishes; do not return anything
-	exit (0);
+        # the wrapper of the daemon finishes; do not return anything
+        exit (0);
 
     } elsif ($pid == 0) {
-	#
-	# --- this branch is executed in the just started child process
-	#
+        #
+        # --- this branch is executed in the just started child process
+        #
 
-	# replace itself by an external process
-	exec (@$args) or
-	    croak "Cannot execute the external process: " . _join_args ($args) . "\n";
+        # replace itself by an external process
+        exec (@$args) or
+            croak "Cannot execute the external process: " . _join_args ($args) . "\n";
 
     } else {
-	#
-	# --- this branch is executed only when there is an error in the forking
-	#
-	croak "Cannot start an external process: " . _join_args ($args) . " - $!\n";
+        #
+        # --- this branch is executed only when there is an error in the forking
+        #
+        croak "Cannot start an external process: " . _join_args ($args) . " - $!\n";
     }
 }
 
@@ -183,13 +181,13 @@ sub _process_start_args {
     my @args;
     my $options;
     if (ref $_[0] and ref $_[0] eq 'ARRAY') {
-	# arguments for external process are given as an arrayref...
-	@args = @{ shift() };
-	$options = (ref $_[0] and ref $_[0] eq 'HASH') ? shift @_ : {};
+        # arguments for external process are given as an arrayref...
+        @args = @{ shift() };
+        $options = (ref $_[0] and ref $_[0] eq 'HASH') ? shift @_ : {};
     } else {
-	# arguments for external process are given as an array...
-	$options = (ref $_[-1] and ref $_[-1] eq 'HASH') ? pop @_ : {};
-	@args = @_;
+        # arguments for external process are given as an array...
+        $options = (ref $_[-1] and ref $_[-1] eq 'HASH') ? pop @_ : {};
+        @args = @_;
     }
     return (\@args, $options);
 }
@@ -207,14 +205,14 @@ sub update_status {
     # put updated values
     $cfg->param ("job.status", $status);
     foreach my $detail (@details) {
-	$cfg->param ("job.status.detail", $detail);
+        $cfg->param ("job.status.detail", $detail);
     }
 
     # note the finished time if the new status indicates the termination
     if ($status eq STATUS_COMPLETED or
-	$status eq STATUS_TERM_BY_REQ or
-	$status eq STATUS_TERM_BY_ERR) {
-	$cfg->param ("job.ended", time());
+        $status eq STATUS_TERM_BY_REQ or
+        $status eq STATUS_TERM_BY_ERR) {
+        $cfg->param ("job.ended", time());
     }
 }
 
@@ -230,6 +228,19 @@ sub status {
     my $status = $cfg->param ('job.status') || STATUS_UNKNOWN;
     my @details = ($cfg->param ('job.status.detail') ? $cfg->param ('job.status.detail') : ());
     return wantarray ? ($status, @details) : $status;
+}
+
+#-----------------------------------------------------------------
+# Return true if the status of the job indicates that the external
+# program had finished (well or badly).
+# -----------------------------------------------------------------
+sub is_finished {
+    my ($class, $jobid) = @_;
+    my $status = $class->status ($jobid);
+    return
+        $status eq STATUS_COMPLETED   or
+        $status eq STATUS_TERM_BY_REQ or
+        $status eq STATUS_TERM_BY_ERR;
 }
 
 #-----------------------------------------------------------------
@@ -279,19 +290,19 @@ sub result_list {
 
     my @files = ();
     find (
-	sub {
-	    my $regex = quotemeta ($dir);
-	    unless (m{^\.\.?$} || -d) {
-		my $file = $File::Find::name;
-		$file =~ s{^$regex[/\\]?}{};
-		push (@files, $file)
-		    unless
-		    $file eq STDOUT_FILE or
-		    $file eq STDERR_FILE or
-		    $file eq CONFIG_FILE;
-	    }
-	  },
-	$dir);
+        sub {
+            my $regex = quotemeta ($dir);
+            unless (m{^\.\.?$} || -d) {
+                my $file = $File::Find::name;
+                $file =~ s{^$regex[/\\]?}{};
+                push (@files, $file)
+                    unless
+                    $file eq STDOUT_FILE or
+                    $file eq STDERR_FILE or
+                    $file eq CONFIG_FILE;
+            }
+          },
+        $dir);
     return @files;
 }
 
@@ -308,7 +319,7 @@ sub result {
     my @allowed_files = $class->result_list ($jobid);
     my $dir = _id2dir ($jobid);
     my $is_allowed = exists { map {$_ => 1} @allowed_files }->{$file};
-    return undef unless $is_allowed;
+    return unless $is_allowed;
     return read_file (File::Spec->catfile ($dir, $file));
 }
 
@@ -323,7 +334,7 @@ sub stdout {
     my $file = File::Spec->catfile ($dir, STDOUT_FILE);
     my $content = "";
     eval {
-	$content = read_file ($file);
+        $content = read_file ($file);
     };
     return $content;
 }
@@ -339,7 +350,7 @@ sub stderr {
     my $file = File::Spec->catfile ($dir, STDERR_FILE);
     my $content = "";
     eval {
-	$content = read_file ($file);
+        $content = read_file ($file);
     };
     return $content;
 }
@@ -366,7 +377,7 @@ sub signal {
     my $dir = _id2dir ($jobid);
     $signal = 9 unless $signal;    # Note that $signal zero is also changed to 9
     croak "Bad signal: $signal.\n"
-	unless $signal =~ m{^[+]?\d+$};
+        unless $signal =~ m{^[+]?\d+$};
     my ($cfg, $cfgfile) = $class->get_configuration ($dir);
     my $pid = $cfg->param ('job.pid');
     return 0 unless $pid;
@@ -382,31 +393,31 @@ sub _check_options {
     # TIMEOUT may not be used on some architectures; must be a
     # positive integer
     if (exists $options->{TIMEOUT}) {
-	my $timeout = $options->{TIMEOUT};
-	if (_is_int ($timeout)) {
-	    if ($timeout == 0) {
-		delete $options->{TIMEOUT};
-	    } elsif ($timeout < 0) {
-		delete $options->{TIMEOUT};
-		carp "Warning: Option TIMEOUT is negative. Ignored.\n";
-	    }
-	} else {
-	    delete $options->{TIMEOUT};
-	    carp "Warning: Option TIMEOUT is not a number (found '$options->{TIMEOUT}'). Ignored.\n";
-	}
-	if (exists $options->{TIMEOUT}) {
-	    my $has_nonblocking = $Config{d_waitpid} eq "define" || $Config{d_wait4} eq "define";
-	    unless ($has_nonblocking) {
-		delete $options->{TIMEOUT};
-		carp "Warning: Option TIMEOUT cannot be used on this system. Ignored.\n";
-	    }
-	}
+        my $timeout = $options->{TIMEOUT};
+        if (_is_int ($timeout)) {
+            if ($timeout == 0) {
+                delete $options->{TIMEOUT};
+            } elsif ($timeout < 0) {
+                delete $options->{TIMEOUT};
+                carp "Warning: Option TIMEOUT is negative. Ignored.\n";
+            }
+        } else {
+            delete $options->{TIMEOUT};
+            carp "Warning: Option TIMEOUT is not a number (found '$options->{TIMEOUT}'). Ignored.\n";
+        }
+        if (exists $options->{TIMEOUT}) {
+            my $has_nonblocking = $Config{d_waitpid} eq "define" || $Config{d_wait4} eq "define";
+            unless ($has_nonblocking) {
+                delete $options->{TIMEOUT};
+                carp "Warning: Option TIMEOUT cannot be used on this system. Ignored.\n";
+            }
+        }
     }
 
     # check for unknown options
     foreach my $key (sort keys %$options) {
-	carp "Warning: Unknown option '$key'. Ignored.\n"
-	    unless exists $KNOWN_OPTIONS->{$key};
+        carp "Warning: Unknown option '$key'. Ignored.\n"
+            unless exists $KNOWN_OPTIONS->{$key};
     }
 
 }
@@ -442,10 +453,10 @@ sub _start_config {
     # ...and fill it
     $cfg->param ("job.id", $jobid);
     foreach my $arg (@$args) {
-	$cfg->param ("job.arg", $arg);
+        $cfg->param ("job.arg", $arg);
     }
     foreach my $key (sort keys %$options) {
-	$cfg->param ("option.$key", $options->{$key});
+        $cfg->param ("option.$key", $options->{$key});
     }
     $cfg->param ("job.status", STATUS_CREATED);
 
@@ -460,9 +471,9 @@ sub _start_config {
 sub _generate_job_id {
     # my $options = shift;  # an optional hashref
     # if ($options and exists $options->{DIR}) {
-    # 	return tempdir ( CLEANUP => 0, DIR => $options->{DIR} );
+    #   return tempdir ( CLEANUP => 0, DIR => $options->{DIR} );
     # } else {
-	# return tempdir ( CLEANUP => 0 );
+        # return tempdir ( CLEANUP => 0 );
     # }
     return tempdir (CLEANUP => 0, DIR => File::Spec->tmpdir);
 }
@@ -476,12 +487,12 @@ sub _generate_job_id {
 sub _id2dir {
     my $jobid = shift;
     croak ("Missing job ID.\n")
-	unless $jobid;
+        unless $jobid;
 
     # does the $jobid start in the temporary directory?
     my $tmpdir = File::Spec->tmpdir;  # this must be the same as used in _generate_job_id
     croak ("Invalid job ID '$jobid'.\n")
-	unless $jobid =~ m{^\Q$tmpdir\E[/\\]};
+        unless $jobid =~ m{^\Q$tmpdir\E[/\\]};
 
     return $jobid;
 }
@@ -493,6 +504,24 @@ __END__
 =pod
 
 =head1 SYNOPSIS
+
+   use Proc::Async;
+
+   # start an external program
+   $jobid = Proc::Async->start ('blastx', '-query', '/data/my.seq', '-out', 'blastout');
+
+   # later, usually from another program (or in another time),
+   # investigate what is the external program doing
+   if (Proc::Async->is_finished ($jobid)) {
+      @files = Proc::Async->result_list ($jobid);
+      foreach my $file (@files) {
+         print Proc::Async->result ($file);
+      }
+      print Proc::Async->stdout();
+      print Proc::Async->stderr();
+   }
+
+   $status = Proc::Async->status ($jobid);
 
 =head1 DESCRIPTION
 
@@ -581,7 +610,6 @@ following constants:
        STATUS_COMPLETED   => 'completed',
        STATUS_TERM_BY_REQ => 'terminated by request',
        STATUS_TERM_BY_ERR => 'terminated by error',
-       STATUS_REMOVED     => 'removed',
    };
 
 In array context, it additionally returns (optional) details of the
@@ -626,6 +654,12 @@ will print:
    without coredump
    terminated at Sat May 18 09:41:56 2013
    elapsed time 0 seconds
+
+=head2 is_finished($jobid)
+
+A convenient method that returns true if the status of the job
+indicates that the external program had finished (well or badly). Or
+false if not. Which includes the case when the state is unknown.
 
 =head2 signal($jobid [,$signal])
 
@@ -751,7 +785,7 @@ method and do not rely on such sameness.
 It deletes all files belonging to the given job, including its job
 directory. It returns the number of file successfully deleted.  If you
 ask for a status of the job after being cleaned up, you get
-C<STATUS_UNKNOWN> or C<STATUS_REMOVED>.
+C<STATUS_UNKNOWN>.
 
 =head2 get_configuration($jobid)
 
@@ -783,23 +817,78 @@ will print:
    job.status=completed
    job.status.detail=exit code 0
    job.status.detail=completed at Sat May 18 11:26:10 2013
-   job.status.detail=elapsed time 0 seconds  
+   job.status.detail=elapsed time 0 seconds
 
-=head1 SEE ALSO
+=head1 ADDITIONAL FILES
 
-L<Proc::Async::Config>
+The module distribution has several example and helping files (which
+are not installed when the module is fetched by the C<cpan> or
+C<cpanm>).
 
-=head1 AUTHOR
+=head3 scripts/procasync
 
-Martin Senger, C<< <martin.senger at gmail.com> >>
+It is a command-line oriented script that can invoke any of the
+functionality of this module. Its purpose is to test the module and,
+perhaps more importantly, to show how to use the module's
+methods. Otherwise, it does not make much sense (that is why it is not
+normally installed).
+
+It has its own (but only short) documentation:
+
+   scripts/procasync -help
+
+or
+
+   perldoc scripts/procasync
+
+Some examples are:
+
+   scripts/procasync -start date
+   scripts/procasync -start 'date -u'
+   scripts/procasync -start 'sleep 100'
+
+The C<-start> arguments can be repeated if its arguments have spaces:
+
+   scripts/procasync -start cat -start '/data/filename with spaces'
+
+All lines above print a job ID that must be used in a consequent usage:
+
+   scripts/procasync -jobid /tmp/hBsXcrafhn -status
+   scripts/procasync -jobid /tmp/hBsXcrafhn -stdout -stderr -rlist
+   scripts/procasync -jobid /tmp/hBsXcrafhn -wdir
+   ...etc...
+
+=head3 examples/README
+
+Because this module is focused mainly on its usage within CGI scripts,
+there is an example of a simple web application. The C<README> file
+explains how to install it and run it from your web server. Here
+L<http://sites.google.com/site/martinsenger/extester-screenshot.png>
+is its screenshot.
+
+=head3 t/data/extester
+
+This script can be used for testing this module (as it is used in the
+regular Perl tests and in the web application mentioned above). It can
+be invoked as an external program and, depending on its command line
+arguments, it creates some standard and/or standard error streams,
+exits with the specified exit code, etc. It has its own documentation:
+
+   perldoc t/data/extester
+
+An example of its command-line:
+
+   extester -stdout an-out -stderr an-err -exit 5 -create a.tmp=5 few/new/dirs/b.tmp=3 an/empty/dir/=0
+
+which writes given short texts into stdout and stderr, creates two
+files (C<a.tmp> and C<b.tmp>, the latter one together with the given
+sub-directories hierarchy) and it exits with exit code 5.
+
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-monitor-simple at
-rt.cpan.org>, or through the web interface at
-L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Proc-Async>.  I
-will be notified, and then you'll automatically be notified of
-progress on your bug as I make changes.
+Please report any bugs or feature requests to
+L<http://github.com/msenger/Proc-Async/issues>.
 
 =head2 Missing features
 
@@ -809,34 +898,6 @@ progress on your bug as I make changes.
 
 Currently, there is no support for providing standard input for the
 started external process.
-
-=back
-
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command.
-
-    perldoc Proc::Async
-
-You can also look for information at:
-
-=over 4
-
-=item * RT: CPAN's request tracker
-
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Proc-Async>
-
-=item * AnnoCPAN: Annotated CPAN documentation
-
-L<http://annocpan.org/dist/Proc-Async>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Proc-Async>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Proc-Async/>
 
 =back
 

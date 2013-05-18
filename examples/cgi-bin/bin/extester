@@ -29,9 +29,9 @@ BEGIN {
 
     Getopt::Long::Configure ('no_ignore_case');
     GetOptions ( 'h|help'     => sub { exec ('perldoc', $0);
-				       die "Sorry, 'perldoc' not found\n"; },
+                                       die "Sorry, 'perldoc' not found\n"; },
                  'v|version'  => sub { print "$VERSION\n";
-				       exit (0); },
+                                       exit (0); },
 
                  #
                  'stdout=s'        => \$opt_stdout,
@@ -53,11 +53,11 @@ $| = 1;  # flushing STDOUT
 if (defined $opt_sleep) {
     $opt_sleep = - $opt_sleep if $opt_sleep < 0;   # only non-negative sleep
     if (defined $opt_progress) {
-	$opt_progress = - $opt_progress if $opt_progress < 0;   # only non-negative progress
-	if ($opt_progress > $opt_sleep) {
-	    warn "EXTESTER: -progress $opt_progress > -sleep $opt_sleep. -progress ignored.\n";
-	    undef $opt_progress;
-	}
+        $opt_progress = - $opt_progress if $opt_progress < 0;   # only non-negative progress
+        if ($opt_progress > $opt_sleep) {
+            warn "EXTESTER: -progress $opt_progress > -sleep $opt_sleep. -progress ignored.\n";
+            undef $opt_progress;
+        }
     }
 } elsif (defined $opt_progress) {
     warn "EXTESTER: -progress valid only with -sleep. -progress ignored.\n";
@@ -71,29 +71,29 @@ print STDERR "$opt_stderr\n" if defined $opt_stderr;
 if ($opt_progress) {
     my $slept = $opt_sleep;
     while ($slept > 0) {
-	sleep ($opt_progress);
-	progress_report();
-	$slept -= $opt_progress;
+        sleep ($opt_progress);
+        progress_report();
+        $slept -= $opt_progress;
     }
 } elsif (defined $opt_sleep) {
-    sleep ($opt_sleep);    
+    sleep ($opt_sleep);
 }
 
 if ($opt_create) {
     # e.g. extester -create a.tmp=1 dir/dor/b.tmp=5 empty.dir/=0
     foreach my $file (keys %$opt_create) {
-	my ($filename, $dirs, $suffix) = fileparse ($file);
-	if ($dirs and $dirs ne './') {
-	    make_path ($dirs);  # like: mkdir -p
-	}
-	if ($filename) {
-	    my $count = $opt_create->{$file};
-	    unless (is_good_number ($count)) {
-		warn "EXTESTER: '-create $file=$count' does not contain a non-negative integer. Changed to 1.\n";
-		$count = 1;
-	    }
-	    write_file ($file, map {"$_\n"} (1..$count));
-	}
+        my ($filename, $dirs, $suffix) = fileparse ($file);
+        if ($dirs and $dirs ne './') {
+            make_path ($dirs);  # like: mkdir -p
+        }
+        if ($filename) {
+            my $count = $opt_create->{$file};
+            unless (is_good_number ($count)) {
+                warn "EXTESTER: '-create $file=$count' does not contain a non-negative integer. Changed to 1.\n";
+                $count = 1;
+            }
+            write_file ($file, map {"$_\n"} (1..$count));
+        }
     }
 }
 
@@ -119,9 +119,7 @@ __END__
             [-sleep <seconds> [-progress <seconds>] ]     \
             [-create <file>=<number> [<file>=<number>...]
 
-   extester -h
    extester -help
-   extester -man
    extester -version
 
 
@@ -149,13 +147,15 @@ subdirectorie that will also be created) and fill them with the given
 number of lines
 
 For example:
+
    extester -create a.tmp=1 dir/dor/b.tmp=5 empty.dir/=0
 
 creates:
+
    ./a.tmp          size:  2
    ./dir/dor/b.tmp  size: 15
    ./empty.dir      an empty directory
- 
+
 
 =back
 
@@ -165,17 +165,9 @@ creates:
 
 =over
 
-=item B<-h>
-
-Print a brief usage message and exits.
-
 =item B<-help>
 
-Print a brief usage message with options and exits.
-
-=item B<-man>
-
-Print a full usage message and exits.
+Print documentation and exits.
 
 =item B<-version>
 

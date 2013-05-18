@@ -33,9 +33,9 @@ if ($action eq 'start') {
     push (@args, '-stdout', $params{'stdout'}) if $params{'stdout'};
     push (@args, '-stderr', $params{'stderr'}) if $params{'stderr'};
     push (@args, '-create', $params{'file1'} . '=' . ($params{'count1'} ? $params{'count1'} : 1))
-	if $params{'file1'};
+        if $params{'file1'};
     push (@args, '-create', $params{'file2'} . '=' . ($params{'count2'} ? $params{'count2'} : 1))
-	if $params{'file2'};
+        if $params{'file2'};
     $jobid = Proc::Async->start (\@args);
     $msg = "Command line: " . join (" ", map {"'$_'"} @args);
 
@@ -70,9 +70,9 @@ my @files = Proc::Async->result_list ($jobid);
 if (@files) {
     $results = "<table cellpadding=\"5\" border=\"0\">\n";
     foreach my $file (@files) {
-	$results .= "<tr valign='top'><td>$file</td><td><pre>";
-	$results .= Proc::Async->result ($jobid, $file);
-	$results .= "</pre></td></tr>\n";
+        $results .= "<tr valign='top'><td>$file</td><td><pre>";
+        $results .= Proc::Async->result ($jobid, $file);
+        $results .= "</pre></td></tr>\n";
     }
     $results .= "</table>\n";
 }
