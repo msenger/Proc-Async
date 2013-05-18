@@ -489,30 +489,356 @@ sub _id2dir {
 1;
 
 __END__
-START - start an external program and return its ID
-  Input: - (mandatory) the full command-line of the external program
-         - ... (wait for it...)
-  Return: a (time and location) unique job ID of the external program (not a PID)
 
-STATUS - give me status of a previously started external program
-  Input: - (mandatory) job ID (as returned from the START request)
-  Return: a (numeric?) code: UNKNOWN, CREATED, RUNNING, COMPLETED,
-                             TERMINATED_BY_REQUEST, TERMINATED_BY_ERROR,
-                             REMOVED ?
+=pod
 
-PROGRESS - give me status AND progress report (which may be the full result)
-  Input: - (mandatory) job ID (as returned from the START request)
-         - where to take progress from (STDERR, STDOUT, FILE, WRAPPER)
-         - full progress report or only partial (tail what was not yet asked for)
-         - return progress report or a file name with the progress report?
-  Return: status (see above)
-          progress report
+=head1 SYNOPSIS
 
-RESULT - the same as progress; which type name should I use?
+=head1 DESCRIPTION
 
-KILL - kill the external program; wait until it is killed
-  Input: - (mandatory) job ID (as returned from the START request)
-  Return: status (see above)
+This module can execute an external process, monitor its state, get
+its results and, if needed, kill it prematurely and remove its
+results. There are, of course, many modules that cover similar
+functionality, including functions directly built-in in Perl. So why
+to have this module, at all? The main feature is hidden in the second
+part of the module name, the word B<Async>. The individual methods (to
+execute, to monitor, to get results, etc.) can be called (almost)
+independently from each other, from separate Perl programs, and there
+may be any delay between them.
 
-CLEAN - remove files from the job
-  Input: - (mandatory) job ID (as returned from the START request)
+It focuses mainly on invoking external programs from the CGI scripts
+in the web applications. Here is a typical scenario: Your CGI script
+starts an external program which may take some time before it
+finishes. The CGI scripts does not wait for it and returns back,
+remembering (e.g. in a form of a hidden variable in the returned HTML
+page) the only thing, the ID of the just started job (a
+C<jobID>). Meanwhile, the invoked external program has been
+I<demonized> (it became a daemon process, a process nobody waits
+for). Now you have another CGI script that can use the remembered
+C<jobID> to monitor status and get results of the previously started
+process.
+
+The core functionality, the demonization, is done by the module
+C<Proc::Daemon>. If you plan to write a single program that starts a
+daemon process and waits for it, then you may need just the
+C<Proc::Daemon> module. But if you wish to split individual calls into
+two or more programs then the C<Proc::Async> may be your choice.
+
+=head1 METHODS
+
+All methods of this module are I<class> methods, there is no C<new>
+instance constructor. It does not make much sense to have an instance
+if you wish to use it from a separate program, does it? The
+communication between individual calls is done in a temporary
+directory (as it is explained later in this documentation but it is
+not important for the module usage).
+
+=head2 start($args) I<or> start(@args)
+
+This method starts an external program, makes a daemon process from
+it, does not wait for its completion and returns a token, a job
+ID. This token will be used as an argument in all other
+methods. Therefore, there is no sense to call any of the other
+methods without calling the C<start()> first.
+
+C<$args> is an arrayref with the full command-line (including the
+external program name). Or, it can be given as a normal list C<@args>.
+
+For example:
+
+   my $jobid = Proc::Async->start (qw{ wget -O cpan.index.html http://search.cpan.org/index.html });
+
+or
+
+   my $jobid = Proc::Async->start ( [qw{ wget -O cpan.index.html http://search.cpan.org/index.html }] );
+
+For each job, this method creates a temporary directory (within your
+system temporary directory, which is, on Unix system, usually C</tmp>)
+and change there (C<chdir>) before executing the wanted external
+program. Keep this directory change in mind if your external programs
+are in the same directory as your Perl program that invokes them. You
+can use, for example, the C<FindBin> module to locate them correctly:
+
+   use FindBin qw($Bin);
+   ...
+   my @args = ("$Bin/my-external-program", ....);
+   $jobid = Proc::Async->start (\@args);
+
+If you need to access this job directory (in case that you need more
+than provided by the methods of this module), use the method
+C<working_dir()> to get its path and name.
+
+=head2 status($jobid)
+
+In scalar context, it returns status of the given process (given by
+its $jobid). The status is expressed by a plain text using the
+following constants:
+
+   use constant {
+       STATUS_UNKNOWN     => 'unknown',
+       STATUS_CREATED     => 'created',
+       STATUS_RUNNING     => 'running',
+       STATUS_COMPLETED   => 'completed',
+       STATUS_TERM_BY_REQ => 'terminated by request',
+       STATUS_TERM_BY_ERR => 'terminated by error',
+       STATUS_REMOVED     => 'removed',
+   };
+
+In array context, it additionally returns (optional) details of the
+status. There can be zero to more details accompanying the status,
+e.g. the exit code, or the signal number that caused the process to
+die. The details are in plain text, no constants used. For example:
+
+   $jobid = Proc::Async->start ('date');
+   @status = Proc::Async->status ($jobid);
+   print join ("\n", @status);
+
+will print:
+
+   running
+   started at Sat May 18 09:35:27 2013
+
+or
+
+   $jobid = Proc::Async->start ('sleep', 5);
+   ...
+   @status = Proc::Async->status ($jobid);
+   print join ("\n", @status);
+
+will print:
+
+   completed
+   exit code 0
+   completed at Sat May 18 09:45:12 2013
+   elapsed time 5 seconds
+
+or, a case when the started job was killed:
+
+   $jobid = Proc::Async->start ('sleep', 60);
+   Proc::Async->signal ($jobid, 9);
+   @status = Proc::Async->status ($jobid);
+   print join ("\n", @status);
+
+will print:
+
+   terminated by request
+   terminated by signal 9
+   without coredump
+   terminated at Sat May 18 09:41:56 2013
+   elapsed time 0 seconds
+
+=head2 signal($jobid [,$signal])
+
+It sends a signal to the given job (given by the
+C<$jobid>). C<$signal> is a positive integer between 1 and 64. Default
+is 9 which means the KILL signal. The available signals are the ones
+listed out by C<kill -l> on your system.
+
+It returns true on success, zero on failure (no such job, no such
+process). It can also croak if the C<$signal> is invalid.
+
+=head2 result_list($jobid)
+
+It returns a list of (some) filenames that exist in the job directory
+that is specified by the given $jobid. The filenames are relative to
+this job directory, and they may include subdirectories if there are
+subdirectories within this job directory (it all depends what your
+external program created there). For example:
+
+   $jobid = Proc::Async->start (qw{ wget -o log.file -O output.file http://www.perl.org/index.html });
+   ...
+   @files = Proc::Async->result_list ($jobid);
+   print join ("\n", @files);
+
+prints:
+
+   output.file
+   log.file
+
+The names of the files returned by the C<result_list()> can be used in
+the method C<result()> in order to get the file content.
+
+If the given $jobid does not represent an existing (and readable)
+directory, it returns an empty list (without croaking).
+
+If the external program created new files inside new directories, the
+C<result_list()> returns names of these files, too. In other words, it
+returns names of all files found within the job directory (however
+deep in sub-directories), except special files (see the next
+paragraph) and empty sub-directories.
+
+There are also files with the special names, as defined by the
+following constants:
+
+   use constant STDOUT_FILE => '___proc_async_stdout___';
+   use constant STDERR_FILE => '___proc_async_stderr___';
+   use constant CONFIG_FILE => '___proc_async_status.cfg';
+
+These files contain standard streams of the external programs (their
+content can be fetched by the methods C<stdout()> and C<stderr()>) and
+internal information about the status of the executed program.
+
+Another example: If the contents of a job directory is the following:
+
+   ___proc_async_stdout___
+   ___proc_async_stderr___
+   ___proc_async_status.cfg
+   a.file
+   a.dir/
+      file1
+      file2
+      b.dir/
+         file3
+   empty.dir/
+
+then the returned list will look like this:
+
+   ('a.file',
+    'a.dir/file1',
+    'a.dir/file2',
+    'b.dir/file3')
+
+=head2 result($jobid, $file)
+
+It returns the content of the given $file from the job given by
+$jobid. The $file is a relative filename; must be one of those
+returned by method C<result_list()>. It returns undef if the $file
+does not exist (or if it does not exist in the list returned by
+C<result_list()>).
+
+For getting content of the standard stream, use the following methods:
+
+=head2 stdout($jobid)
+
+It returns the content of the STDOUT from the job given by $jobid. It
+may be an empty string if the job did not produce any STDOUT, or if
+the job does not exist anymore.
+
+=head2 stderr($jobid)
+
+It returns the content of the STDERR from the job given by $jobid. It
+may be an empty string if the job did not produce any STDERR, or if
+the job does not exist anymore.
+
+If you execute an external program that cannot be found you will find
+an error message about it here, as well:
+
+   my $jobid = Proc::Async->start ('a-bad-program');
+   ...
+   print join ("\n", Proc::Async->status ($jobid);
+
+      terminated by error
+      exit code 2
+      completed at Sat May 18 11:02:04 2013
+      elapsed time 0 seconds
+
+   print Proc::Async->stderr();
+
+      Can't exec "a-bad-program": No such file or directory at lib/Proc/Async.pm line 148.
+
+=head2 working_dir($jobid)
+
+It returns the name of the working directory for the given $jobid. Or
+undef if such working directory does not exist.
+
+You may notice that the $jobid looks like a name of a working
+directory. Actually, in the current implementation, it is, indeed, the
+same. But it may change in the future. Therefore, better use this
+method and do not rely on such sameness.
+
+=head2 clean($jobid)
+
+It deletes all files belonging to the given job, including its job
+directory. It returns the number of file successfully deleted.  If you
+ask for a status of the job after being cleaned up, you get
+C<STATUS_UNKNOWN> or C<STATUS_REMOVED>.
+
+=head2 get_configuration($jobid)
+
+Use this method only if you wish to look at the internals (for example
+to get exact starting and ending time of a job). It creates a
+configuration (an instance of C<Proc::Async::Config>) and fills it
+from the configuration file (if such file exists) for the given
+job. It returns a two-element array, the first element being a
+configuration instance, the second element the file name where the
+configuration was filled from:
+
+   my $jobid = Proc::Async->start ('date', '-u');
+   ...
+   my ($cfg, $cfgfile) = Proc::Async->get_configuration ($jobid);
+   foreach my $name ($cfg->param) {
+      foreach my $value ($cfg->param ($name)) {
+          print STDOUT "$name=$value\n";
+      }
+   }
+
+will print:
+
+   job.arg=date
+   job.arg=-u
+   job.ended=1368865570
+   job.id=/tmp/q74Bgd8mXX
+   job.pid=22273
+   job.started=1368865570
+   job.status=completed
+   job.status.detail=exit code 0
+   job.status.detail=completed at Sat May 18 11:26:10 2013
+   job.status.detail=elapsed time 0 seconds  
+
+=head1 SEE ALSO
+
+L<Proc::Async::Config>
+
+=head1 AUTHOR
+
+Martin Senger, C<< <martin.senger at gmail.com> >>
+
+=head1 BUGS
+
+Please report any bugs or feature requests to C<bug-monitor-simple at
+rt.cpan.org>, or through the web interface at
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Proc-Async>.  I
+will be notified, and then you'll automatically be notified of
+progress on your bug as I make changes.
+
+=head2 Missing features
+
+=over
+
+=item Standard input
+
+Currently, there is no support for providing standard input for the
+started external process.
+
+=back
+
+=head1 SUPPORT
+
+You can find documentation for this module with the perldoc command.
+
+    perldoc Proc::Async
+
+You can also look for information at:
+
+=over 4
+
+=item * RT: CPAN's request tracker
+
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Proc-Async>
+
+=item * AnnoCPAN: Annotated CPAN documentation
+
+L<http://annocpan.org/dist/Proc-Async>
+
+=item * CPAN Ratings
+
+L<http://cpanratings.perl.org/d/Proc-Async>
+
+=item * Search CPAN
+
+L<http://search.cpan.org/dist/Proc-Async/>
+
+=back
+
+
+=cut

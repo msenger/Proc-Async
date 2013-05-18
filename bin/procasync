@@ -21,7 +21,7 @@ use Data::Dumper;
 my @cfg_args;
 my ($opt_h, $opt_help, $opt_m, $opt_v, $opt_q);
 my (@opt_start, $opt_opts, $opt_jobid, $opt_status, $opt_clean, $opt_kill, $opt_signal);
-my ($opt_wdir, $opt_rlist, $opt_result, $opt_stdout, $opt_stderr);
+my ($opt_wdir, $opt_rlist, $opt_result, $opt_stdout, $opt_stderr, $opt_conf);
 my ($undoc);
 
 BEGIN {
@@ -49,6 +49,7 @@ BEGIN {
                  'result=s'         => \$opt_result,  # content of a result
                  stdout             => \$opt_stdout,  # content of STDOUT
                  stderr             => \$opt_stderr,  # content of STDERR
+                 'conf|cfg'         => \$opt_conf,    # contiguration
 
                  undoc              => \$undoc,  # undocumented
 
@@ -160,6 +161,16 @@ if ($opt_clean) {
     qmsg ("$file_count files for job $opt_jobid have been deleted.\n");
 }
 
+if ($opt_conf) {
+    check_jobid;
+    my ($cfg, $cfgfile) = Proc::Async->get_configuration ($opt_jobid);
+    foreach my $name ($cfg->param) {
+	foreach my $value ($cfg->param ($name)) {
+	    print STDOUT "$name=$value\n";
+	}
+    }
+}
+
 if ($opt_status) {
     check_jobid;
     my @status = Proc::Async->status ($opt_jobid);
@@ -168,17 +179,3 @@ if ($opt_status) {
 }
 
 __END__
-
-    actions:
-    -start <args>
-    -status [-details?]
-    -clean
-    -kill
-    -...
-
-    args used for 'start':
-    -start <exproc> ...  (agruments for exproc...)
-    -option <name>=<value> ... (may be repeated)
-
-    args for other actions:
-    -jobid <jobid>
