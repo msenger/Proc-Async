@@ -238,8 +238,8 @@ sub is_finished {
     my ($class, $jobid) = @_;
     my $status = $class->status ($jobid);
     return
-        $status eq STATUS_COMPLETED   or
-        $status eq STATUS_TERM_BY_REQ or
+        $status eq STATUS_COMPLETED   ||
+        $status eq STATUS_TERM_BY_REQ ||
         $status eq STATUS_TERM_BY_ERR;
 }
 

@@ -1,7 +1,7 @@
 #!perl -T
 
 #use Test::More qw(no_plan);
-use Test::More tests => 16;
+use Test::More tests => 23;
 
 # -----------------------------------------------------------------
 # Tests start here...
@@ -59,5 +59,32 @@ is ($cfg->param ('hobby'), 'geocaching', "Re-read multivalue property as scalar 
 is_deeply (\@hobbies,
            ['geocaching', 'gadgets'],
            "Re-Read multivalue property as array failed");
+
+# getting a list of names and removing properties
+{
+    my $cfgfile = File::Temp->new (UNLINK => 1, SUFFIX => '.cfg');
+    my $cfg = Proc::Async::Config->new ($cfgfile);
+    my @array = $cfg->param();
+    is (scalar @array, 0, "Empty configuration as an array failed");
+    is (scalar $cfg->param(), undef, "Empty configuration as a scalar failed");
+
+    $cfg->param ('greeting', 'ahoj');
+    $cfg->param ('greeting', 'hi');
+    $cfg->param ('bluting', 'bye');
+    is_deeply ([$cfg->param()], [qw{bluting greeting}], "param lst does not comply");
+
+    is_deeply ($cfg->remove ('greeting'), ['ahoj', 'hi'], "Remove of an array failed");
+    is_deeply ($cfg->remove ('bluting'), ['bye'], "Remove of a single value failed");
+    is ($cfg->param(), undef, "Empty by removing failed");
+}
+
+# clean (in memory)
+{
+    my $cfgfile = File::Temp->new (UNLINK => 1, SUFFIX => '.cfg');
+    my $cfg = Proc::Async::Config->new ($cfgfile);
+    $cfg->param ('hello', 'world');
+    $cfg->clean();
+    is ($cfg->param(), undef, "Empty by clean failed");
+}
 
 __END__
