@@ -1,7 +1,7 @@
 #!perl
 
 #use Test::More qw(no_plan);
-use Test::More tests => 21;
+use Test::More tests => 15;
 
 #-----------------------------------------------------------------
 # Return a fully qualified name of the given file in the test
@@ -61,19 +61,19 @@ my $empty = File::Spec->catfile ($wdir, 'empty');
 ok (-e $empty && -d $empty, "Empty failed");
 Proc::Async->clean ($jobid);
 
-# job 3
-$jobid = Proc::Async->start ("$extester -sleep 60");
-ok (!Proc::Async->is_finished ($jobid), "Finished prematurely");
-is (Proc::Async->signal ($jobid), 1, "Killed failed");
-is (Proc::Async->signal ($jobid), 0, "Killed did not failed");
-Proc::Async->clean ($jobid);
+# # job 3
+# $jobid = Proc::Async->start ("$extester -sleep 60");
+# ok (!Proc::Async->is_finished ($jobid), "Finished prematurely");
+# is (Proc::Async->signal ($jobid), 1, "Killed failed");
+# is (Proc::Async->signal ($jobid), 0, "Killed did not failed");
+# Proc::Async->clean ($jobid);
 
-# job 4
-$jobid = Proc::Async->start ("$extester -sleep 60");
-ok (!Proc::Async->is_finished ($jobid), "Finished prematurely");
-is (Proc::Async->signal ($jobid, 9), 1, "Killed failed");
-is (Proc::Async->signal ($jobid, 9), 0, "Killed did not failed");
-Proc::Async->clean ($jobid);
+# # job 4
+# $jobid = Proc::Async->start ("$extester -sleep 60");
+# ok (!Proc::Async->is_finished ($jobid), "Finished prematurely");
+# is (Proc::Async->signal ($jobid, 9), 1, "Killed failed");
+# is (Proc::Async->signal ($jobid, 9), 0, "Killed did not failed");
+# Proc::Async->clean ($jobid);
 
 
 __END__
