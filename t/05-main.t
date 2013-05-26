@@ -1,5 +1,17 @@
 #!perl
 
+BEGIN {
+    # skip all these tests if the default perl is not the same as the
+    # perl used to start this test (because in such cases there may be
+    # missing Perl modules during invocation the external process)
+    use File::Which;
+    my $default_perl = which ('perl');
+    unless ($default_perl and $default_perl eq $^X) {
+        require Test::More;
+        Test::More::plan (skip_all => 'default perl differs from the one used for testing');
+    }
+}
+
 #use Test::More qw(no_plan);
 use Test::More tests => 15;
 
@@ -34,9 +46,10 @@ my $wdir = Proc::Async->working_dir ($jobid);
 ok (-e $wdir && -d $wdir, "Working directory failed");
 my $cfgfile = File::Spec->catfile ($wdir, Proc::Async::CONFIG_FILE);
 ok (-e $cfgfile && -f $cfgfile, "CONFIG_FILE failed");
-is (Proc::Async->clean ($jobid), 4, "Removing 4 files failed");
+Proc::Async->clean ($jobid);
+ok (!-e $cfgfile, "Removing CONFIG_FILE failed");
 
-# job 1
+# job 2
 $jobid =
     Proc::Async->start ($extester,
                         qw{ -stdout OUT -stderr ERR -exit 5 -create a1.tmp=1 -create c/d/x/a2.tmp=2 -create empty/=0});
