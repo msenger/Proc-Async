@@ -13,7 +13,7 @@ BEGIN {
 }
 
 #use Test::More qw(no_plan);
-use Test::More tests => 15;
+use Test::More tests => 17;
 
 #-----------------------------------------------------------------
 # Return a fully qualified name of the given file in the test
@@ -88,5 +88,42 @@ Proc::Async->clean ($jobid);
 # is (Proc::Async->signal ($jobid, 9), 0, "Killed did not failed");
 # Proc::Async->clean ($jobid);
 
+{
+    my $args = "$extester -stdout yes | $extester -pipe -stdout no";
+    my $jobid = Proc::Async->start ($args, { Proc::Async::ALLOW_SHELL() => 1 });
+    my $count = 0;
+    while (not Proc::Async->is_finished ($jobid)) {
+        sleep 1;
+        last if $count++ > 10;   # precaution
+    }
+    ok (Proc::Async->stdout ($jobid) =~ m{^yes\nno\n$}, 'Pipe failed');
+    Proc::Async->clean ($jobid);
+}
+
+{
+    my $args = "$extester -stdout yes | $extester -pipe -stdout no";
+    my $jobid = Proc::Async->start ($args);
+    my $count = 0;
+    while (not Proc::Async->is_finished ($jobid)) {
+        sleep 1;
+        last if $count++ > 10;   # precaution
+    }
+    is (Proc::Async->status ($jobid), Proc::Async::STATUS_TERM_BY_ERR, 'Pipe did not fail');
+    Proc::Async->clean ($jobid);
+}
+
+__END__
+
+{
+    my $args = "echo one two three | wc -w";
+    my $jobid = Proc::Async->start ($args, { Proc::Async::ALLOW_SHELL() => 1 });
+    my $count = 0;
+    while (not Proc::Async->is_finished ($jobid)) {
+        sleep 1;
+        last if $count++ > 10;   # precaution
+    }
+    is (Proc::Async->stdout ($jobid), "3\n", 'Pipe 2 failed');
+    Proc::Async->clean ($jobid);
+}
 
 __END__

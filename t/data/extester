@@ -21,7 +21,7 @@ our $VERSION;
 # Command-line arguments and script usage
 # -----------------------------------------------------------------
 my ($opt_stdout, $opt_stderr, $opt_exit, $opt_signal, $opt_sleep, $opt_progress);
-my ($opt_create);
+my ($opt_create, $opt_pipe);
 BEGIN {
     use Getopt::Long;
 
@@ -41,6 +41,7 @@ BEGIN {
                  'sleep=i'         => \$opt_sleep,
                  'progress=i'      => \$opt_progress,
                  'create=s%{1,50}' => \$opt_create,
+                 pipe              => \$opt_pipe,
 
         ) or exit 1;
 }  # end of BEGIN
@@ -65,6 +66,10 @@ if (defined $opt_sleep) {
 }
 
 # the main
+if ($opt_pipe) {
+    print while (<>);
+}
+
 print STDOUT "$opt_stdout\n" if defined $opt_stdout;
 print STDERR "$opt_stderr\n" if defined $opt_stderr;
 
@@ -114,7 +119,7 @@ __END__
 
 =head1 SYNOPSIS
 
-   extester [-stdout <text>]  [-stderr <text>]            \
+   extester [-stdout <text>]  [-stderr <text>] [-pipe]    \
             [-exit <integer>] [-signal <integer>]         \
             [-sleep <seconds> [-progress <seconds>] ]     \
             [-create <file>=<number> [<file>=<number>...]
@@ -141,6 +146,8 @@ A simple script that does nothing except that:
 
 =item * it may print a short progress report on its standard error every
 given interval
+
+=item * it may read its standard input and pipes it to its standard output
 
 =item * it may create one or more output files (whose names may iclude
 subdirectorie that will also be created) and fill them with the given

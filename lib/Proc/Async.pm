@@ -36,9 +36,16 @@ use constant {
     STATUS_TERM_BY_ERR => 'terminated by error',
 };
 
-# not used now...
+# options used in the start() method
+use constant {
+    ALLOW_SHELL => 'ALLOW_SHELL',
+    TIMEOUT     => 'TIMEOUT',
+};
+
+#
 my $KNOWN_OPTIONS = {
-    TIMEOUT => 1,
+    ALLOW_SHELL() => 1,
+    TIMEOUT() => 1,
 };
 
 #-----------------------------------------------------------------
@@ -50,6 +57,7 @@ my $KNOWN_OPTIONS = {
 #  @args    ... an array with the full command-line (including the
 #               external program name)
 #  $options ... a hashref with additional options:
+#               ALLOW_SHELL => 1
 #               TIMEOUT => number of second to spend
 #-----------------------------------------------------------------
 sub start {
@@ -143,8 +151,15 @@ sub start {
         #
 
         # replace itself by an external process
-        exec (@$args) or
-            croak "Cannot execute the external process: " . _join_args ($args) . "\n";
+        if ($options->{ ALLOW_SHELL() } or @$args > 1) {
+            # this allows to execute things such as: 'date | wc'
+            exec (@$args) or
+                croak "Cannot execute the external process: " . _join_args ($args) . "\n";
+        } else {
+            # this is always save against interpreting $args by a shell
+            exec { $args->[0] } @$args or
+                croak "Cannot execute (using an indirect object) the external process: " . _join_args ($args) . "\n";
+        }
 
     } else {
         #
@@ -562,7 +577,7 @@ communication between individual calls is done in a temporary
 directory (as it is explained later in this documentation but it is
 not important for the module usage).
 
-=head2 start($args) I<or> start(@args)
+=head2 start($args [,$options]) I<or> start(@args, [$options])
 
 This method starts an external program, makes a daemon process from
 it, does not wait for its completion and returns a token, a job
@@ -580,6 +595,38 @@ For example:
 or
 
    my $jobid = Proc::Async->start ( [qw{ wget -O cpan.index.html http://search.cpan.org/index.html }] );
+
+If the given array of arguments has only one element, it is still
+considered as an array. Therefore, you cannot use a single string
+representing the full command-line:
+
+   # this will not work
+   $jobid = start ("date -u");
+
+This is a feature not a bug. It prevents to let the shell interprets
+the meta-characters inside the arguments. More about it in the Perl's
+documentation (try: C<perldoc -f exec>). But sometimes you are willing
+to sacrifice safety and to let a shell to act for your benefit. An
+example is the usage of a pipe character in the command line. In order
+to allow it, you need to specify an option C<Proc::Async::ALLOW_SHELL>
+in the start() method:
+
+   # this works
+   $jobid = start ("date -u", { Proc::Async::ALLOW_SHELL() => 1 });
+
+   # ...and this works, as well
+   # (it prints number 3 to the standard output)
+   $jobid = start ("echo one two three | wc -w", { Proc::Async::ALLOW_SHELL() => 1 });
+
+The options (so far only one is recognized) are given as a hashref
+that is the last argument of the C<start()> method. The keys of this
+hash are defined as constants in this module:
+
+   use constant {
+      ALLOW_SHELL => 'ALLOW_SHELL',
+
+   };
+
 
 For each job, this method creates a temporary directory (within your
 system temporary directory, which is, on Unix system, usually C</tmp>)
