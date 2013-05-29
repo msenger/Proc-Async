@@ -553,7 +553,7 @@ may be any delay between them.
 It focuses mainly on invoking external programs from the CGI scripts
 in the web applications. Here is a typical scenario: Your CGI script
 starts an external program which may take some time before it
-finishes. The CGI scripts does not wait for it and returns back,
+finishes. The CGI script does not wait for it and returns back,
 remembering (e.g. in a form of a hidden variable in the returned HTML
 page) the only thing, the ID of the just started job (a
 C<jobID>). Meanwhile, the invoked external program has been
